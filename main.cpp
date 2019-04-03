@@ -32,6 +32,8 @@
 #include "colocalization/addBearingRangeNodes.h"
 #include "bearing_estimator/estimate_bearing.h"
 #include "bearing_estimator/get_range.h"
+#include "tf/transform_datatypes.h"
+// #include "LinearMath/btMatrix3x3.h"
 
 using namespace std;
 using namespace gtsam;
@@ -121,24 +123,42 @@ void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
     }
 }
 
+float get_yaw(geometry_msgs::Quaternion orientation){
+    tf::Quaternion quat;
+    tf::quaternionMsgToTF(orientation, quat);
+    double roll, pitch, yaw;
+    tf::Matrix3x3(quat).getRPY(roll, pitch, yaw);
+    return yaw;
+}
+
 void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
 {
     geometry_msgs::Pose pose = msg->pose.pose;
-    // Check how to convert quaternion to theta
-    gtsam::Pose2 current_pose = gtsam::Pose2(pose.position.x - last_pose2.x(), pose.position.y - last_pose2.y(), pose.orientation.z - last_pose2.theta());
+    float yaw = get_yaw(pose.orientation);
+    gtsam::Pose2 current_pose = gtsam::Pose2(pose.position.x, pose.position.y, yaw);
+
+    double dx = pose.position.x - last_pose2.x();
+    double dy = pose.position.y - last_pose2.y();
+    double dtheta = yaw - last_pose2.theta();
+
+    double dxr = dx*cos(-yaw) - dy*sin(-yaw);
+    double dyr = dx*sin(-yaw) + dy*cos(-yaw);
+    double dthr = dtheta;
+
+    gtsam::Pose2 ak2_change = gtsam::Pose2(dxr, dyr, dthr);
     float dist = distance(current_pose, last_pose2);
     if(dist > 1){
         gtsam::Symbol symbol = gtsam::Symbol('b', ak2_factor_nodes_count++);
         if(!ak2_init)
         {
-            newFactors.add(PriorFactor<Pose2>(symbol, current_pose, priorNoise2));
+            newFactors.add(PriorFactor<Pose2>(symbol, ak2_change, priorNoise2));
             newValues.insert(symbol, current_pose);
             ak2_cur_pose = current_pose;
             ak2_init = true;
         }
         else
         {
-            newFactors.add(BetweenFactor<Pose2>(last_ak2_symbol, symbol, current_pose, odometryNoise));
+            newFactors.add(BetweenFactor<Pose2>(last_ak2_symbol, symbol, ak2_change, odometryNoise));
             ak2_cur_pose.compose(current_pose);
             newValues.insert(symbol, ak2_cur_pose);
         }
@@ -237,7 +257,6 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
 int main(int argc, char* argv[])
 {
     ros::init(argc, argv, "colocalization");
-
 
     ros::Subscriber odometry1_sub = n.subscribe("/odom1", 1000, odometry1Callback);
     ros::Subscriber odometry2_sub = n.subscribe("/odom2", 1000, odometry2Callback);
