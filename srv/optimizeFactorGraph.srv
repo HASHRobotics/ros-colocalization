@@ -1,0 +1,5 @@
+---
+Header header
+int64 size
+geometry_msgs/PoseArray poses1
+geometry_msgs/PoseArray poses2

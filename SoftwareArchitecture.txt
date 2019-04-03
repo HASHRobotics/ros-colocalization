@@ -1,0 +1,96 @@
+Tips and Tricks
+- Run bearing and range node with different prefix
+- Todo: Add NodeHandle with a prefix to both bearing and range node so that it works on different
+    namespace when you run on different rovers
+- Validate the assumption that odometry node publishes absolute pose
+  - Done
+- Add Odometry node when adding range and bearing data
+  - Done
+- Publish updated path data as well.
+  - Done
+- Odometry is dx, dy, dtheta
+  - Done
+
+
+Architecture
+  Localization Node
+    - Running on base station
+    - Subscribes
+      - Odometry1
+        - Depends on packet loss
+      - Odometry2
+        - Depends on packet loss
+    - Services
+      - Call Services
+         - Range from rover having anchor decawave
+         - Bearing from both rovers
+      - Provides services
+         - add bearing and range nodes in factor graph
+         - optimize pose of both rovers
+    - Publishes
+      - None
+
+  Range Service
+    - Running on autokrawler with anchor decawave
+    - Continuously running or makes connection only when required ????
+    - Subscribes
+      - None
+    - Services
+      - Range information
+    - Publishes
+      - None
+
+  Bearing Service
+    - Running on autokrawlers
+    - When does image get published over WiFi ?
+    - How should we handle time sync ?
+    - Subscribes
+      - Raw catadioptric image
+    - Services
+      - Bearing information
+    - Publishes
+      - None
+
+  Odometry Node
+    - Subscribes
+      - Encoder ticks
+      - IMU data
+    - Services
+      - Update self pose
+    - Publishes
+      - odometry from both rovers
+
+  Coordinator Node
+    - Running on base station
+      - Sum of Distance based coordinator
+    - Subscribes
+      - Odometry1
+      - Odometry2
+    - Services
+      - Calls service
+        - Every 1m-5m ,calls range and bearing calculation service
+        - Every 5m-10m, calls optimize pose service
+        - Updated pose estimate for both rovers
+    - Publishes
+        - None
+
+  Visualization Node
+    - Running on base station
+    - Subscribes
+    - Publishes
+    - Services
+
+
+  Roboclaw Driver
+    - Subscribes
+      - encoder tick from front motor
+      - encoder tick from back motor
+    - Publishes
+      - front drive and steering motor current position
+      - back drive and steering motor current velocity
+
+  Wheel odometry
+    - Subscribes
+      - Joint state
+    - Publishes
+      - Use motion model to find the current_x, current_y and current theta in terms of quaternions
