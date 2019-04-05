@@ -59,7 +59,11 @@ using namespace gtsam;
 */
 int i = 0;
 
-ros::NodeHandle n;
+
+ros::ServiceClient bearingClient12;
+ros::ServiceClient bearingClient21;
+ros::ServiceClient rangeClient;
+
 
 NonlinearFactorGraph newFactors = NonlinearFactorGraph();
 gtsam::Values newValues = Values();
@@ -97,16 +101,42 @@ float distance(gtsam::Pose2 current_pose, gtsam::Pose2 last_pose)
     return std::sqrt(pow(current_pose.x() - last_pose.x(), 2) + pow(current_pose.y()-last_pose.y(), 2));
 }
 
+float get_yaw(geometry_msgs::Quaternion orientation){
+    tf::Quaternion quat;
+    tf::quaternionMsgToTF(orientation, quat);
+    double roll, pitch, yaw;
+    tf::Matrix3x3(quat).getRPY(roll, pitch, yaw);
+    return yaw;
+}
+
+gtsam::Pose2 get_pose_change_robot_frame(gtsam::Pose2 pose, gtsam::Pose2 last_pose){
+    double dx = pose.x() - last_pose2.x();
+    double dy = pose.y() - last_pose2.y();
+    double dtheta = pose.theta() - last_pose2.theta();
+
+    double yaw = pose.theta();
+    double dxr = dx*cos(-yaw) - dy*sin(-yaw);
+    double dyr = dx*sin(-yaw) + dy*cos(-yaw);
+    double dthr = dtheta;
+
+    gtsam::Pose2 ak2_change = gtsam::Pose2(dxr, dyr, dthr);
+    return ak2_change;
+}
+
 void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
 {
+    ROS_INFO("Inside odometry1");
     geometry_msgs::Pose pose = msg->pose.pose;
-    // Check how to convert quaternion to theta
-    gtsam::Pose2 current_pose = gtsam::Pose2(pose.position.x - last_pose1.x(), pose.position.y - last_pose1.y(), pose.orientation.z - last_pose1.theta());
+    float yaw = get_yaw(pose.orientation);
+    gtsam::Pose2 current_pose = gtsam::Pose2(pose.position.x, pose.position.y, yaw);
+    gtsam::Pose2 ak1_change = get_pose_change_robot_frame(current_pose, last_pose1);
+
     float dist = distance(current_pose, last_pose1);
-    if (dist>1) {
+    if (dist>=0) {
         gtsam::Symbol symbol = gtsam::Symbol('a', ak1_factor_nodes_count++);
         if(!ak1_init)
         {
+            ROS_INFO("Odometry 1 init");
             newFactors.add(PriorFactor<Pose2>(symbol, current_pose, priorNoise1));
             newValues.insert(symbol, current_pose);
             ak1_cur_pose = current_pose;
@@ -114,6 +144,7 @@ void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
         }
         else
         {
+            ROS_INFO("Odometry 1 else");
             newFactors.add(BetweenFactor<Pose2>(last_ak1_symbol, symbol, current_pose, odometryNoise));
             ak1_cur_pose.compose(current_pose);
             newValues.insert(symbol, ak1_cur_pose);
@@ -123,34 +154,20 @@ void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
     }
 }
 
-float get_yaw(geometry_msgs::Quaternion orientation){
-    tf::Quaternion quat;
-    tf::quaternionMsgToTF(orientation, quat);
-    double roll, pitch, yaw;
-    tf::Matrix3x3(quat).getRPY(roll, pitch, yaw);
-    return yaw;
-}
-
 void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
 {
+    // ROS_INFO("Inside odometry2");
     geometry_msgs::Pose pose = msg->pose.pose;
     float yaw = get_yaw(pose.orientation);
     gtsam::Pose2 current_pose = gtsam::Pose2(pose.position.x, pose.position.y, yaw);
+    gtsam::Pose2 ak2_change = get_pose_change_robot_frame(current_pose, last_pose2);
 
-    double dx = pose.position.x - last_pose2.x();
-    double dy = pose.position.y - last_pose2.y();
-    double dtheta = yaw - last_pose2.theta();
-
-    double dxr = dx*cos(-yaw) - dy*sin(-yaw);
-    double dyr = dx*sin(-yaw) + dy*cos(-yaw);
-    double dthr = dtheta;
-
-    gtsam::Pose2 ak2_change = gtsam::Pose2(dxr, dyr, dthr);
     float dist = distance(current_pose, last_pose2);
-    if(dist > 1){
+    if(dist >= 0){
         gtsam::Symbol symbol = gtsam::Symbol('b', ak2_factor_nodes_count++);
         if(!ak2_init)
         {
+            // ROS_INFO("Odometry 2 init");
             newFactors.add(PriorFactor<Pose2>(symbol, ak2_change, priorNoise2));
             newValues.insert(symbol, current_pose);
             ak2_cur_pose = current_pose;
@@ -158,6 +175,7 @@ void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
         }
         else
         {
+            // ROS_INFO("Odometry 2 else");
             newFactors.add(BetweenFactor<Pose2>(last_ak2_symbol, symbol, ak2_change, odometryNoise));
             ak2_cur_pose.compose(current_pose);
             newValues.insert(symbol, ak2_cur_pose);
@@ -167,15 +185,17 @@ void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
     }
 }
 
-// Change to localization request response
 bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request, colocalization::addBearingRangeNodes::Response &response)
 {
     // Adding current odometry Node for rover 1
     nav_msgs::OdometryConstPtr odom1 = ros::topic::waitForMessage<nav_msgs::Odometry>("/odom1");
     geometry_msgs::Pose pose1 = odom1->pose.pose;
-    gtsam::Pose2 current_pose1 = gtsam::Pose2(pose1.position.x - last_pose1.x(), pose1.position.y - last_pose1.y(), pose1.orientation.z - last_pose1.theta());
+    float yaw1 = get_yaw(pose1.orientation);
+    gtsam::Pose2 current_pose1 =  gtsam::Pose2(pose1.position.x, pose1.position.y, yaw1);
+    gtsam::Pose2 ak1_change = get_pose_change_robot_frame(current_pose1, last_pose1);
+
     gtsam::Symbol symbol_ak1 = gtsam::Symbol('a', ak1_factor_nodes_count++);
-    newFactors.add(BetweenFactor<Pose2>(last_ak1_symbol, symbol_ak1, current_pose1, odometryNoise));
+    newFactors.add(BetweenFactor<Pose2>(last_ak1_symbol, symbol_ak1, ak1_change, odometryNoise));
     ak1_cur_pose.compose(current_pose1);
     newValues.insert(symbol_ak1, ak1_cur_pose);
     last_ak1_symbol = symbol_ak1;
@@ -183,8 +203,11 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
 
     // Adding current odometry Node for rover 2
     nav_msgs::OdometryConstPtr odom2 = ros::topic::waitForMessage<nav_msgs::Odometry>("/odom2");
-    geometry_msgs::Pose pose = odom2->pose.pose;
-    gtsam::Pose2 current_pose2 = gtsam::Pose2(pose1.position.x - last_pose2.x(), pose1.position.y - last_pose2.y(), pose1.orientation.z - last_pose2.theta());
+    geometry_msgs::Pose pose2 = odom2->pose.pose;
+    float yaw2 = get_yaw(pose2.orientation);
+    gtsam::Pose2 current_pose2 =  gtsam::Pose2(pose2.position.x, pose2.position.y, yaw2);
+    gtsam::Pose2 ak2_change = get_pose_change_robot_frame(current_pose2, last_pose2);
+
     gtsam::Symbol symbol_ak2 = gtsam::Symbol('b', ak2_factor_nodes_count++);
     newFactors.add(BetweenFactor<Pose2>(last_ak2_symbol, symbol_ak2, current_pose2, odometryNoise));
     ak2_cur_pose.compose(current_pose2);
@@ -193,7 +216,6 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
     last_pose2 = current_pose2;
 
     // Add bearing measurement from rover 1 to rover 2
-    ros::ServiceClient bearingClient12 = n.serviceClient<bearing_estimator::estimate_bearing>("bearing_estimate12");
     bearing_estimator::estimate_bearing bearing12_srv;
     if (bearingClient12.call(bearing12_srv))
     {
@@ -201,7 +223,6 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
     }
 
     // Add bearing measurement from rover 2 to rover 1
-    ros::ServiceClient bearingClient21 = n.serviceClient<bearing_estimator::estimate_bearing>("bearing_estimate21");
     bearing_estimator::estimate_bearing bearing21_srv;
     if (bearingClient21.call(bearing21_srv))
     {
@@ -209,7 +230,6 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
     }
 
     // Add range measurement from rover with anchor sensor
-    ros::ServiceClient rangeClient = n.serviceClient<bearing_estimator::get_range>("range_estimate");
     bearing_estimator::get_range range_srv;
     if (rangeClient.call(range_srv))
     {
@@ -236,61 +256,42 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
     // To Do: Marginals marginals(newFactors, result);
     int count = 0;
     response.size = size;
-    for(int i=0; i<ak1_factor_nodes_count;i++)
-    {
-        gtsam::Symbol symbol_ak1 = gtsam::Symbol('a', i);
-        gtsam::Pose2* pose1 = (gtsam::Pose2*) &result.at(symbol_ak1);
-        response.poses1.poses[i].position.x = pose1->x();
-        response.poses1.poses[i].position.y = pose1->y();
-        response.poses1.poses[i].orientation.z = pose1->theta();
-    }
-    for(int i=0; i<ak2_factor_nodes_count;i++)
-    {
-        gtsam::Symbol symbol_ak2 = gtsam::Symbol('b', i);
-        gtsam::Pose2* pose2 = (gtsam::Pose2*) &result.at(symbol_ak2);
-        response.poses2.poses[i].position.x = pose2->x();
-        response.poses2.poses[i].position.y = pose2->y();
-        response.poses2.poses[i].orientation.z = pose2->theta();
-    }
+        ROS_INFO("I am in optimizeFactorGraph");
+    // for(int i=0; i<ak1_factor_nodes_count;i++)
+    // {
+    //     gtsam::Symbol symbol_ak1 = gtsam::Symbol('a', i);
+    //     gtsam::Pose2* pose1 = (gtsam::Pose2*) &result.at(symbol_ak1);
+    //     response.poses1.poses[i].position.x = pose1->x();
+    //     response.poses1.poses[i].position.y = pose1->y();
+    //     response.poses1.poses[i].orientation.z = pose1->theta();
+    // }
+    // for(int i=0; i<ak2_factor_nodes_count;i++)
+    // {
+    //     gtsam::Symbol symbol_ak2 = gtsam::Symbol('b', i);
+    //     gtsam::Pose2* pose2 = (gtsam::Pose2*) &result.at(symbol_ak2);
+    //     response.poses2.poses[i].position.x = pose2->x();
+    //     response.poses2.poses[i].position.y = pose2->y();
+    //     response.poses2.poses[i].orientation.z = pose2->theta();
+    // }
     return true;
 }
 int main(int argc, char* argv[])
 {
     ros::init(argc, argv, "colocalization");
-
+    ros::NodeHandle n;
     ros::Subscriber odometry1_sub = n.subscribe("/odom1", 1000, odometry1Callback);
     ros::Subscriber odometry2_sub = n.subscribe("/odom2", 1000, odometry2Callback);
     ros::ServiceServer addBearingRangeNodesService = n.advertiseService("addBearingRangeNodes", addBearingRangeNodes);
     ros::ServiceServer optimizeFactorGraphService = n.advertiseService("optimizeFactorGraph", optimizeFactorGraph);
+    ros::ServiceClient bearingClient12 = n.serviceClient<bearing_estimator::estimate_bearing>("bearing_estimate12");
+    ros::ServiceClient bearingClient21 = n.serviceClient<bearing_estimator::estimate_bearing>("bearing_estimate21");
+    ros::ServiceClient rangeClient = n.serviceClient<bearing_estimator::get_range>("range_estimate");
     ros::Publisher pose_pub = n.advertise<geometry_msgs::Pose2D>("estimated_pose", 10);
+    ros::Rate loop_rate(10);
+    while(ros::ok())
+    {
+        ROS_INFO("I am working");
+        ros::spin();
+        loop_rate.sleep();
+    }
 }
-
-// Moved the code to services
-// void bearing12Callback(const std_msgs::Float64::ConstPtr& msg)
-// {
-//     gtsam::Symbol symbol_ak2 = gtsam::Symbol('b', ak2_factor_nodes_count);
-//     gtsam::Symbol symbol_ak1 = gtsam::Symbol('a', ak1_factor_nodes_count);
-//     newFactors.add(BearingFactor<Pose2, Point2>(symbol_ak1, symbol_ak2, Rot2(msg->data), bearingNoise));
-// }
-
-// void bearing21Callback(const std_msgs::Float64::ConstPtr& msg)
-// {
-//     gtsam::Symbol symbol_ak2 = gtsam::Symbol('b', ak2_factor_nodes_count);
-//     gtsam::Symbol symbol_ak1 = gtsam::Symbol('a', ak1_factor_nodes_count);
-//     newFactors.add(BearingFactor<Pose2, Point2>(symbol_ak2, symbol_ak1, Rot2(msg->data), bearingNoise));
-// }
-
-// void range12Callback(const sensor_msgs::Range::ConstPtr& msg)
-// {
-//     gtsam::Symbol symbol_ak2 = gtsam::Symbol('b', ak2_factor_nodes_count);
-//     gtsam::Symbol symbol_ak1 = gtsam::Symbol('a', ak1_factor_nodes_count);
-//     newFactors.add(RangeFactor<Pose2, Point2>(symbol_ak1, symbol_ak2, msg->range, rangeNoise));
-// }
-
-// void range21Callback(const sensor_msgs::Range::ConstPtr& msg)
-// {
-
-//     gtsam::Symbol symbol_ak2 = gtsam::Symbol('b', ak2_factor_nodes_count);
-//     gtsam::Symbol symbol_ak1 = gtsam::Symbol('a', ak1_factor_nodes_count);
-//     newFactors.add(RangeFactor<Pose2, Point2>(symbol_ak2, symbol_ak1, msg->range, rangeNoise));
-// }
