@@ -84,9 +84,10 @@ noiseModel::Diagonal::shared_ptr priorNoise2 = priorNoise1;
 
 noiseModel::Diagonal::shared_ptr odometryNoise = noiseModel::Diagonal::Sigmas(Vector3(odometryRSigma, odometryRSigma, odometryThetaSigma));
 
-noiseModel::Diagonal::shared_ptr bearingNoise = noiseModel::Diagonal::Sigmas(Vector3(measuredBearingNoiseSigma));
+noiseModel::Diagonal::shared_ptr measurementNoise = noiseModel::Diagonal::Sigmas((Vector(2) << 0.1, 0.2));
+noiseModel::Diagonal::shared_ptr bearingNoise = noiseModel::Diagonal::Sigmas((Vector(1) << measuredBearingNoiseSigma));
 
-noiseModel::Diagonal::shared_ptr rangeNoise = noiseModel::Diagonal::Sigmas(Vector3(measuredRangeNoiseSigma));
+noiseModel::Diagonal::shared_ptr rangeNoise = noiseModel::Diagonal::Sigmas((Vector(1) << measuredRangeNoiseSigma));
 
 Pose2 ak1_cur_pose;
 Symbol last_ak1_symbol;
@@ -180,7 +181,6 @@ void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
 
 bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request, colocalization::addBearingRangeNodes::Response &response)
 {
-    ROS_INFO("Adding odometry 1");
     nav_msgs::OdometryConstPtr odom1 = ros::topic::waitForMessage<nav_msgs::Odometry>("/odom1");
     geometry_msgs::Pose pose1 = odom1->pose.pose;
     float yaw1 = get_yaw(pose1.orientation);
@@ -191,13 +191,9 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
     newFactors.add(BetweenFactor<Pose2>(last_ak1_symbol, symbol_ak1, ak1_change, odometryNoise));
     ak1_cur_pose = ak1_cur_pose.compose(ak1_change);
     newValues.insert(symbol_ak1, ak1_cur_pose);
-    ROS_INFO("Problem 1 is here");
-    symbol_ak1.print();
-    ak1_cur_pose.print();
     last_ak1_symbol = symbol_ak1;
     last_pose1 = current_pose1;
 
-    ROS_INFO("Adding odometry 2");
     nav_msgs::OdometryConstPtr odom2 = ros::topic::waitForMessage<nav_msgs::Odometry>("/odom2");
     geometry_msgs::Pose pose2 = odom2->pose.pose;
     float yaw2 = get_yaw(pose2.orientation);
@@ -207,19 +203,15 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
     gtsam::Symbol symbol_ak2 = gtsam::Symbol('b', ak2_factor_nodes_count++);
     newFactors.add(BetweenFactor<Pose2>(last_ak2_symbol, symbol_ak2, ak2_change, odometryNoise));
     ak2_cur_pose = ak2_cur_pose.compose(ak2_change);
-    ROS_INFO("Problem  2 is here");
-    symbol_ak2.print();
-    ak2_cur_pose.print();
     newValues.insert(symbol_ak2, ak2_cur_pose);
     last_ak2_symbol = symbol_ak2;
     last_pose2 = current_pose2;
 
-    // bearing_estimator::estimate_bearing bearing12_srv;
-    // if (bearingClient12.call(bearing12_srv))
-    // {
-    //     ROS_INFO("Adding bearing measurement");
-    //     newFactors.add(BearingFactor<Pose2, Point2>(symbol_ak1, symbol_ak2, Rot2(bearing12_srv.response.bearing.bearing), bearingNoise));
-    // }
+    bearing_estimator::estimate_bearing bearing12_srv;
+    if (bearingClient12.call(bearing12_srv))
+    {
+        newFactors.add(BearingFactor<Pose2, Pose2>(symbol_ak1, symbol_ak2, Rot2(bearing12_srv.response.bearing.bearing), bearingNoise));
+    }
 
     // // Add bearing measurement from rover 2 to rover 1
     // bearing_estimator::estimate_bearing bearing21_srv;
@@ -232,9 +224,8 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
     bearing_estimator::get_range range_srv;
     if (rangeClient.call(range_srv))
     {
-        ROS_INFO("Adding range measurement");
-        newFactors.add(RangeFactor<Pose2, Point2>(symbol_ak2, symbol_ak1, range_srv.response.range.range, rangeNoise));
-        newFactors.add(RangeFactor<Pose2, Point2>(symbol_ak1, symbol_ak2, range_srv.response.range.range, rangeNoise));
+        newFactors.add(RangeFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, range_srv.response.range.range, rangeNoise));
+        newFactors.add(RangeFactor<Pose2, Pose2>(symbol_ak1, symbol_ak2, range_srv.response.range.range, rangeNoise));
     }
     return true;
 }
@@ -242,10 +233,8 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
 bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, colocalization::optimizeFactorGraph::Response &response)
 {
     // Publish updated path data as well.
-    ROS_INFO("I am here");
     gtsam::LevenbergMarquardtParams LMParams;
     LMParams.setLinearSolverType("MULTIFRONTAL_QR");
-    newValues.print();
     gtsam::LevenbergMarquardtOptimizer optimizer = gtsam::LevenbergMarquardtOptimizer(newFactors, newValues, LMParams);
 
     gtsam::Values result = optimizer.optimize();
@@ -254,23 +243,42 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
     // To Do: Marginals marginals(newFactors, result);
     int count = 0;
     response.size = size;
-        ROS_INFO("I am in optimizeFactorGraph");
-    // for(int i=0; i<ak1_factor_nodes_count;i++)
-    // {
-    //     gtsam::Symbol symbol_ak1 = gtsam::Symbol('a', i);
-    //     gtsam::Pose2* pose1 = (gtsam::Pose2*) &result.at(symbol_ak1);
-    //     response.poses1.poses[i].position.x = pose1->x();
-    //     response.poses1.poses[i].position.y = pose1->y();
-    //     response.poses1.poses[i].orientation.z = pose1->theta();
-    // }
-    // for(int i=0; i<ak2_factor_nodes_count;i++)
-    // {
-    //     gtsam::Symbol symbol_ak2 = gtsam::Symbol('b', i);
-    //     gtsam::Pose2* pose2 = (gtsam::Pose2*) &result.at(symbol_ak2);
-    //     response.poses2.poses[i].position.x = pose2->x();
-    //     response.poses2.poses[i].position.y = pose2->y();
-    //     response.poses2.poses[i].orientation.z = pose2->theta();
-    // }
+    for(int i=0; i<ak1_factor_nodes_count;i++)
+    {
+        gtsam::Symbol symbol_ak1 = gtsam::Symbol('a', i);
+        gtsam::Pose2* pose1 = (gtsam::Pose2*) &result.at(symbol_ak1);
+
+        geometry_msgs::Point position;
+        position.x = pose1->x();
+        position.y = pose1->y();
+
+        geometry_msgs::Quaternion orientation;
+        orientation.z = pose1->theta();
+
+        geometry_msgs::Pose pose;
+        pose.position = position;
+        pose.orientation = orientation;
+
+        response.poses1.poses.push_back(pose);
+    }
+    for(int i=0; i<ak2_factor_nodes_count;i++)
+    {
+        gtsam::Symbol symbol_ak2 = gtsam::Symbol('b', i);
+        gtsam::Pose2* pose2 = (gtsam::Pose2*) &result.at(symbol_ak2);
+
+        geometry_msgs::Point position;
+        position.x = pose2->x();
+        position.y = pose2->y();
+
+        geometry_msgs::Quaternion orientation;
+        orientation.z = pose2->theta();
+
+        geometry_msgs::Pose pose;
+        pose.position = position;
+        pose.orientation = orientation;
+
+        response.poses2.poses.push_back(pose);
+    }
     return true;
 }
 int main(int argc, char* argv[])
@@ -288,7 +296,6 @@ int main(int argc, char* argv[])
     ros::Rate loop_rate(10);
     while(ros::ok())
     {
-        ROS_INFO("I am working");
         ros::spin();
         loop_rate.sleep();
     }
