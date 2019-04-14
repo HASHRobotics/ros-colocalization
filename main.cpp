@@ -109,7 +109,7 @@ gtsam::Pose2 last_pose2 = gtsam::Pose2(0,0,0);
 // TODO: Class for Odometry
 
 /**
- * 
+ *
  */
 float distance(gtsam::Pose2 current_pose, gtsam::Pose2 last_pose)
 {
@@ -117,18 +117,19 @@ float distance(gtsam::Pose2 current_pose, gtsam::Pose2 last_pose)
 }
 
 /**
- * 
+ *
  */
 float get_yaw(geometry_msgs::Quaternion orientation){
     tf::Quaternion quat;
     tf::quaternionMsgToTF(orientation, quat);
+    quat.normalize();
     double roll, pitch, yaw;
     tf::Matrix3x3(quat).getRPY(roll, pitch, yaw);
     return yaw;
 }
 
 /**
- * 
+ *
  */
 gtsam::Pose2 get_pose_change_robot_frame(gtsam::Pose2 pose, gtsam::Pose2 last_pose){
     double dx = pose.x() - last_pose.x();
@@ -145,7 +146,7 @@ gtsam::Pose2 get_pose_change_robot_frame(gtsam::Pose2 pose, gtsam::Pose2 last_po
 }
 
 /**
- * 
+ *
  */
 void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
 {
@@ -176,7 +177,7 @@ void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
 }
 
 /**
- * 
+ *
  */
 void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
 {
@@ -206,7 +207,7 @@ void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
 }
 
 /**
- * 
+ *
  */
 bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request, colocalization::addBearingRangeNodes::Response &response)
 {
@@ -260,10 +261,11 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
 }
 
 /**
- * 
+ *
  */
 bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, colocalization::optimizeFactorGraph::Response &response)
 {
+    newValues.print("Odometry Result:\n");
     // Publish updated path data as well.
     gtsam::LevenbergMarquardtParams LMParams;
     LMParams.setLinearSolverType("MULTIFRONTAL_QR");
@@ -316,7 +318,7 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
 
 
 /**
- * 
+ *
  */
 int main(int argc, char* argv[])
 {
