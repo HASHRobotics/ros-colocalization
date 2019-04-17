@@ -57,16 +57,25 @@ using namespace gtsam;
     - Publishes
       - None
 */
+// This variable is not requried
 int i = 0;
 
-
+// Service client to request bearing of rover 2 from rover 1
 ros::ServiceClient bearingClient12;
+
+// Service client to request bearing of rover 2 from rover 1
 ros::ServiceClient bearingClient21;
+
+// Service client to request relative range between two rovers.
 ros::ServiceClient rangeClient;
+
+// TODO: [Stretch] Make the code modular enough to support multiple rovers.
 
 
 NonlinearFactorGraph newFactors = NonlinearFactorGraph();
 gtsam::Values newValues = Values();
+
+// Publisher for Rover Poses
 ros::Publisher pose_pub1;
 ros::Publisher pose_pub2;
 
@@ -97,19 +106,31 @@ Symbol last_ak2_symbol;
 gtsam::Pose2 last_pose1 = gtsam::Pose2(0,0,0);
 gtsam::Pose2 last_pose2 = gtsam::Pose2(0,0,0);
 
+// TODO: Class for Odometry
+
+/**
+ *
+ */
 float distance(gtsam::Pose2 current_pose, gtsam::Pose2 last_pose)
 {
     return std::sqrt(pow(current_pose.x() - last_pose.x(), 2) + pow(current_pose.y()-last_pose.y(), 2));
 }
 
+/**
+ *
+ */
 float get_yaw(geometry_msgs::Quaternion orientation){
     tf::Quaternion quat;
     tf::quaternionMsgToTF(orientation, quat);
+    quat.normalize();
     double roll, pitch, yaw;
     tf::Matrix3x3(quat).getRPY(roll, pitch, yaw);
     return yaw;
 }
 
+/**
+ *
+ */
 gtsam::Pose2 get_pose_change_robot_frame(gtsam::Pose2 pose, gtsam::Pose2 last_pose){
     double dx = pose.x() - last_pose.x();
     double dy = pose.y() - last_pose.y();
@@ -124,6 +145,9 @@ gtsam::Pose2 get_pose_change_robot_frame(gtsam::Pose2 pose, gtsam::Pose2 last_po
     return ak2_change;
 }
 
+/**
+ *
+ */
 void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
 {
     geometry_msgs::Pose pose = msg->pose.pose;
@@ -152,6 +176,9 @@ void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
     }
 }
 
+/**
+ *
+ */
 void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
 {
     geometry_msgs::Pose pose = msg->pose.pose;
@@ -179,6 +206,9 @@ void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
     }
 }
 
+/**
+ *
+ */
 bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request, colocalization::addBearingRangeNodes::Response &response)
 {
     nav_msgs::OdometryConstPtr odom1 = ros::topic::waitForMessage<nav_msgs::Odometry>("/odom1");
@@ -230,8 +260,12 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
     return true;
 }
 
+/**
+ *
+ */
 bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, colocalization::optimizeFactorGraph::Response &response)
 {
+    newValues.print("Odometry Result:\n");
     // Publish updated path data as well.
     gtsam::LevenbergMarquardtParams LMParams;
     LMParams.setLinearSolverType("MULTIFRONTAL_QR");
@@ -281,12 +315,20 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
     }
     return true;
 }
+
+
+/**
+ *
+ */
 int main(int argc, char* argv[])
 {
     ros::init(argc, argv, "colocalization");
     ros::NodeHandle n;
+
+    // TODO: We can use one odometry callback by having a Class for "Odometry"
     ros::Subscriber odometry1_sub = n.subscribe("/odom1", 1000, odometry1Callback);
     ros::Subscriber odometry2_sub = n.subscribe("/odom2", 1000, odometry2Callback);
+
     ros::ServiceServer addBearingRangeNodesService = n.advertiseService("addBearingRangeNodes", addBearingRangeNodes);
     ros::ServiceServer optimizeFactorGraphService = n.advertiseService("optimizeFactorGraph", optimizeFactorGraph);
     bearingClient12 = n.serviceClient<bearing_estimator::estimate_bearing>("estimate_bearing");
