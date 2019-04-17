@@ -72,6 +72,9 @@ ros::ServiceClient rangeClient;
 // TODO: [Stretch] Make the code modular enough to support multiple rovers.
 
 
+ros::Publisher pose1_pub;
+ros::Publisher pose2_pub;
+
 NonlinearFactorGraph newFactors = NonlinearFactorGraph();
 gtsam::Values newValues = Values();
 
@@ -83,7 +86,7 @@ bool ak1_init = 0;
 bool ak2_init = 0;
 int ak1_factor_nodes_count = 0;
 int ak2_factor_nodes_count = 0;
-double odometryRSigma = 0.05;
+double odometryRSigma = 0.1;
 double odometryThetaSigma = 0.025;
 double measuredBearingNoiseSigma = 0.1;
 double measuredRangeNoiseSigma = 0.1;
@@ -257,6 +260,7 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
         newFactors.add(RangeFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, range_srv.response.range.range, rangeNoise));
         newFactors.add(RangeFactor<Pose2, Pose2>(symbol_ak1, symbol_ak2, range_srv.response.range.range, rangeNoise));
     }
+    newFactors.print(" Factor Graph");
     return true;
 }
 
@@ -295,6 +299,8 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
 
         response.poses1.poses.push_back(pose);
     }
+    geometry_msgs::PoseArray poses1 = response.poses1;
+    pose1_pub.publish(poses1);
     for(int i=0; i<ak2_factor_nodes_count;i++)
     {
         gtsam::Symbol symbol_ak2 = gtsam::Symbol('b', i);
@@ -313,6 +319,8 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
 
         response.poses2.poses.push_back(pose);
     }
+    geometry_msgs::PoseArray poses2 = response.poses2;
+    pose1_pub.publish(poses2);
     return true;
 }
 
@@ -328,7 +336,8 @@ int main(int argc, char* argv[])
     // TODO: We can use one odometry callback by having a Class for "Odometry"
     ros::Subscriber odometry1_sub = n.subscribe("/odom1", 1000, odometry1Callback);
     ros::Subscriber odometry2_sub = n.subscribe("/odom2", 1000, odometry2Callback);
-
+    pose1_pub = n.advertise<geometry_msgs::PoseArray>("/pose1", 1000);
+    pose2_pub = n.advertise<geometry_msgs::PoseArray>("/pose2", 1000);
     ros::ServiceServer addBearingRangeNodesService = n.advertiseService("addBearingRangeNodes", addBearingRangeNodes);
     ros::ServiceServer optimizeFactorGraphService = n.advertiseService("optimizeFactorGraph", optimizeFactorGraph);
     bearingClient12 = n.serviceClient<bearing_estimator::estimate_bearing>("estimate_bearing");
