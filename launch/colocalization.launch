@@ -1,0 +1,17 @@
+<launch>
+    <node pkg="bearing_estimator" type="bearing_estimator_node.py" name="bearing12" ns="ak1">
+    </node>
+
+    <node pkg="bearing_estimator" type="bearing_estimator_node.py" name="bearing21" ns="ak2">
+    </node>
+
+    <node pkg="bearing_estimator" type="range_estimator_node.py" name="range">
+    </node>
+
+    <!-- Only use when mock data for odometry required  -->
+    <node pkg="bearing_estimator" type="talker.py" name="odometry">
+    </node>
+
+    <node pkg="colocalization" type="colocalization" name="colocalization">
+    </node>
+</launch>

@@ -58,8 +58,6 @@ using namespace gtsam;
       - None
 */
 // This variable is not requried
-int i = 0;
-
 // Service client to request bearing of rover 2 from rover 1
 ros::ServiceClient bearingClient12;
 
@@ -246,12 +244,12 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
         newFactors.add(BearingFactor<Pose2, Pose2>(symbol_ak1, symbol_ak2, Rot2(bearing12_srv.response.bearing.bearing), bearingNoise));
     }
 
-    // // Add bearing measurement from rover 2 to rover 1
-    // bearing_estimator::estimate_bearing bearing21_srv;
-    // if (bearingClient21.call(bearing21_srv))
-    // {
-    //     newFactors.add(BearingFactor<Pose2, Point2>(symbol_ak2, symbol_ak1, Rot2(bearing21_srv.response.bearing.bearing), bearingNoise));
-    // }
+    // Add bearing measurement from rover 2 to rover 1
+    bearing_estimator::estimate_bearing bearing21_srv;
+    if (bearingClient21.call(bearing21_srv))
+    {
+        newFactors.add(BearingFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, Rot2(bearing21_srv.response.bearing.bearing), bearingNoise));
+    }
 
     // Add range measurement from rover with anchor sensor
     bearing_estimator::get_range range_srv;
@@ -320,7 +318,7 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
         response.poses2.poses.push_back(pose);
     }
     geometry_msgs::PoseArray poses2 = response.poses2;
-    pose1_pub.publish(poses2);
+    pose2_pub.publish(poses2);
     return true;
 }
 
@@ -340,8 +338,8 @@ int main(int argc, char* argv[])
     pose2_pub = n.advertise<geometry_msgs::PoseArray>("/pose2", 1000);
     ros::ServiceServer addBearingRangeNodesService = n.advertiseService("addBearingRangeNodes", addBearingRangeNodes);
     ros::ServiceServer optimizeFactorGraphService = n.advertiseService("optimizeFactorGraph", optimizeFactorGraph);
-    bearingClient12 = n.serviceClient<bearing_estimator::estimate_bearing>("estimate_bearing");
-    bearingClient21 = n.serviceClient<bearing_estimator::estimate_bearing>("estimate_bearing");
+    bearingClient12 = n.serviceClient<bearing_estimator::estimate_bearing>("ak1/estimate_bearing");
+    bearingClient21 = n.serviceClient<bearing_estimator::estimate_bearing>("ak2/estimate_bearing");
     rangeClient = n.serviceClient<bearing_estimator::get_range>("get_range");
     ros::Publisher pose_pub = n.advertise<geometry_msgs::Pose2D>("estimated_pose", 10);
     ros::Rate loop_rate(10);
