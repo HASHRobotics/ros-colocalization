@@ -31,7 +31,8 @@
 #include "colocalization/optimizeFactorGraph.h"
 #include "colocalization/addBearingRangeNodes.h"
 #include "bearing_estimator/estimate_bearing.h"
-#include "bearing_estimator/get_range.h"
+#include "bearing_estimator/estimate_range.h"
+#include "bearing_estimator/ground_truth_range.h"
 #include "tf/transform_datatypes.h"
 // #include "LinearMath/btMatrix3x3.h"
 
@@ -66,6 +67,7 @@ ros::ServiceClient bearingClient21;
 
 // Service client to request relative range between two rovers.
 ros::ServiceClient rangeClient;
+ros::ServiceClient trueRangeClient;
 
 // TODO: [Stretch] Make the code modular enough to support multiple rovers.
 
@@ -212,6 +214,7 @@ void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
  */
 bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request, colocalization::addBearingRangeNodes::Response &response)
 {
+    ROS_INFO("addBearingRangeNodes called");
     nav_msgs::OdometryConstPtr odom1 = ros::topic::waitForMessage<nav_msgs::Odometry>("/odom1");
     geometry_msgs::Pose pose1 = odom1->pose.pose;
     float yaw1 = get_yaw(pose1.orientation);
@@ -252,12 +255,15 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
     }
 
     // Add range measurement from rover with anchor sensor
-    bearing_estimator::get_range range_srv;
-    if (rangeClient.call(range_srv))
+    bearing_estimator::estimate_range estimate_range_srv;
+    if (rangeClient.call(estimate_range_srv))
     {
-        newFactors.add(RangeFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, range_srv.response.range.range, rangeNoise));
-        newFactors.add(RangeFactor<Pose2, Pose2>(symbol_ak1, symbol_ak2, range_srv.response.range.range, rangeNoise));
+        newFactors.add(RangeFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, estimate_range_srv.response.range.range, rangeNoise));
+        newFactors.add(RangeFactor<Pose2, Pose2>(symbol_ak1, symbol_ak2, estimate_range_srv.response.range.range, rangeNoise));
     }
+
+    bearing_estimator::ground_truth_range true_range_srv;
+    trueRangeClient.call(true_range_srv);
     newFactors.print(" Factor Graph");
     return true;
 }
@@ -267,6 +273,7 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
  */
 bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, colocalization::optimizeFactorGraph::Response &response)
 {
+    ROS_INFO("addBearingRangeNodes called");
     newValues.print("Odometry Result:\n");
     // Publish updated path data as well.
     gtsam::LevenbergMarquardtParams LMParams;
@@ -340,7 +347,8 @@ int main(int argc, char* argv[])
     ros::ServiceServer optimizeFactorGraphService = n.advertiseService("optimizeFactorGraph", optimizeFactorGraph);
     bearingClient12 = n.serviceClient<bearing_estimator::estimate_bearing>("ak1/estimate_bearing");
     bearingClient21 = n.serviceClient<bearing_estimator::estimate_bearing>("ak2/estimate_bearing");
-    rangeClient = n.serviceClient<bearing_estimator::get_range>("get_range");
+    rangeClient = n.serviceClient<bearing_estimator::estimate_range>("estimate_range");
+    trueRangeClient = n.serviceClient<bearing_estimator::ground_truth_range>("ground_truth_range");
     ros::Publisher pose_pub = n.advertise<geometry_msgs::Pose2D>("estimated_pose", 10);
     ros::Rate loop_rate(10);
     while(ros::ok())
