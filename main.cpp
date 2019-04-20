@@ -33,6 +33,7 @@
 #include "bearing_estimator/estimate_bearing.h"
 #include "bearing_estimator/estimate_range.h"
 #include "bearing_estimator/ground_truth_range.h"
+#include "bearing_estimator/ground_truth_bearing.h"
 #include "tf/transform_datatypes.h"
 // #include "LinearMath/btMatrix3x3.h"
 
@@ -64,6 +65,7 @@ ros::ServiceClient bearingClient12;
 
 // Service client to request bearing of rover 2 from rover 1
 ros::ServiceClient bearingClient21;
+ros::ServiceClient trueBearingClient;
 
 // Service client to request relative range between two rovers.
 ros::ServiceClient rangeClient;
@@ -272,6 +274,10 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
 
     bearing_estimator::ground_truth_range true_range_srv;
     trueRangeClient.call(true_range_srv);
+
+    bearing_estimator::ground_truth_bearing true_bearing_srv;
+    trueBearingClient.call(true_bearing_srv);
+
     newFactors.print(" Factor Graph");
     return true;
 }
@@ -357,6 +363,7 @@ int main(int argc, char* argv[])
     bearingClient21 = n.serviceClient<bearing_estimator::estimate_bearing>("ak2/estimate_bearing");
     rangeClient = n.serviceClient<bearing_estimator::estimate_range>("estimate_range");
     trueRangeClient = n.serviceClient<bearing_estimator::ground_truth_range>("ground_truth_range");
+    trueBearingClient = n.serviceClient<bearing_estimator::ground_truth_bearing>("ground_truth_bearing");
     ros::Publisher pose_pub = n.advertise<geometry_msgs::Pose2D>("estimated_pose", 10);
     ros::Rate loop_rate(10);
     while(ros::ok())
