@@ -282,6 +282,25 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
     return true;
 }
 
+float calculate_error_metric(gtsam::Values estimated_path, gtsam::Values real_path, int rover_n)
+{
+    int nodes_n = rover_n == 1 ? ak1_factor_nodes_count : ak2_factor_nodes_count;
+    char rover_letter = rover_n == 1 ? 'a' : 'b';
+
+    float error = 0;
+
+    for(int i=0; i<nodes_n;i++)
+    {
+        gtsam::Symbol symbol = gtsam::Symbol(rover_letter, i);
+        gtsam::Pose2* estimated_pose = (gtsam::Pose2*) &estimated_path.at(symbol);
+        gtsam::Pose2* real_pose = (gtsam::Pose2*) &real_path.at(symbol);
+
+        error += std::sqrt(pow(real_pose->x() - estimated_pose->x(), 2) + pow(real_pose->y()-estimated_pose->y(), 2));
+    }
+
+    return error;
+}
+
 /**
  *
  */
@@ -300,49 +319,64 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
     // To Do: Marginals marginals(newFactors, result);
     int count = 0;
     response.size = size;
+    float odom_error1, colocalize_error1;
     for(int i=0; i<ak1_factor_nodes_count;i++)
     {
-        gtsam::Symbol symbol_ak1 = gtsam::Symbol('a', i);
-        gtsam::Pose2* pose1 = (gtsam::Pose2*) &result.at(symbol_ak1);
+        if(i<realValues.size() && i<newValues.size() && i<result.size())
+        {
+            gtsam::Symbol symbol_ak1 = gtsam::Symbol('a', i);
+            gtsam::Pose2* pose1 = (gtsam::Pose2*) &result.at(symbol_ak1);
 
-        geometry_msgs::Point position;
-        position.x = pose1->x();
-        position.y = pose1->y();
+            geometry_msgs::Point position;
+            position.x = pose1->x();
+            position.y = pose1->y();
 
-        geometry_msgs::Quaternion orientation;
-        orientation.z = pose1->theta();
+            geometry_msgs::Quaternion orientation;
+            orientation.z = pose1->theta();
 
-        geometry_msgs::Pose pose;
-        pose.position = position;
-        pose.orientation = orientation;
+            geometry_msgs::Pose pose;
+            pose.position = position;
+            pose.orientation = orientation;
 
-        response.poses1.poses.push_back(pose);
+            response.poses1.poses.push_back(pose);
+            odom_error1 = calculate_error_metric(newValues, realValues, 1);
+            colocalize_error1 = calculate_error_metric(result, realValues, 1);
+        }
     }
     geometry_msgs::PoseArray poses1 = response.poses1;
     pose1_pub.publish(poses1);
+    float odom_error2, colocalize_error2;
     for(int i=0; i<ak2_factor_nodes_count;i++)
     {
-        gtsam::Symbol symbol_ak2 = gtsam::Symbol('b', i);
-        gtsam::Pose2* pose2 = (gtsam::Pose2*) &result.at(symbol_ak2);
+        if(i<realValues.size() && i<newValues.size() && i<result.size())
+        {
+            gtsam::Symbol symbol_ak2 = gtsam::Symbol('b', i);
+            gtsam::Pose2* pose2 = (gtsam::Pose2*) &result.at(symbol_ak2);
 
-        geometry_msgs::Point position;
-        position.x = pose2->x();
-        position.y = pose2->y();
+            geometry_msgs::Point position;
+            position.x = pose2->x();
+            position.y = pose2->y();
 
-        geometry_msgs::Quaternion orientation;
-        orientation.z = pose2->theta();
+            geometry_msgs::Quaternion orientation;
+            orientation.z = pose2->theta();
 
-        geometry_msgs::Pose pose;
-        pose.position = position;
-        pose.orientation = orientation;
+            geometry_msgs::Pose pose;
+            pose.position = position;
+            pose.orientation = orientation;
 
-        response.poses2.poses.push_back(pose);
+            response.poses2.poses.push_back(pose);
+            odom_error2 = calculate_error_metric(newValues, realValues, 2);
+            colocalize_error2 = calculate_error_metric(result, realValues, 2);
+        }
     }
+    float odom_error = odom_error1 + odom_error2;
+    float colocalize_error = colocalize_error1 + colocalize_error2;
+
     geometry_msgs::PoseArray poses2 = response.poses2;
     pose2_pub.publish(poses2);
+
     return true;
 }
-
 
 /**
  *
