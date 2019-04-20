@@ -1,4 +1,4 @@
-    #include <vector>
+#include <vector>
 #include <fstream>
 #include <math.h>
 
@@ -77,7 +77,7 @@ ros::Publisher pose2_pub;
 
 NonlinearFactorGraph newFactors = NonlinearFactorGraph();
 gtsam::Values newValues = Values();
-
+gtsam::Values realValues = Values();
 // Publisher for Rover Poses
 ros::Publisher pose_pub1;
 ros::Publisher pose_pub2;
@@ -157,10 +157,9 @@ void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
     float yaw = get_yaw(pose.orientation);
     gtsam::Pose2 current_pose = gtsam::Pose2(pose.position.x, pose.position.y, yaw);
     gtsam::Pose2 ak1_change = get_pose_change_robot_frame(current_pose, last_pose1);
-
+    gtsam::Symbol symbol = gtsam::Symbol('a', ak1_factor_nodes_count++);
     float dist = distance(current_pose, last_pose1);
     if (dist>=0) {
-        gtsam::Symbol symbol = gtsam::Symbol('a', ak1_factor_nodes_count++);
         if(!ak1_init)
         {
             newFactors.add(PriorFactor<Pose2>(symbol, current_pose, priorNoise1));
@@ -177,6 +176,10 @@ void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
         last_ak1_symbol = symbol;
         last_pose1 = current_pose;
     }
+
+    geometry_msgs::PoseWithCovarianceConstPtr real_pose = ros::topic::waitForMessage<geometry_msgs::PoseWithCovariance>("/piksi/enu_pose_fix");
+    gtsam::Pose2 current_real_pose = gtsam::Pose2(real_pose->pose.position.x, real_pose->pose.position.y, 0);
+    realValues.insert(symbol, current_real_pose);
 }
 
 /**
@@ -188,9 +191,10 @@ void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
     float yaw = get_yaw(pose.orientation);
     gtsam::Pose2 current_pose = gtsam::Pose2(pose.position.x, pose.position.y, yaw);
     gtsam::Pose2 ak2_change = get_pose_change_robot_frame(current_pose, last_pose2);
+    gtsam::Symbol symbol = gtsam::Symbol('b', ak2_factor_nodes_count++);
     float dist = distance(current_pose, last_pose2);
     if(dist >= 0){
-        gtsam::Symbol symbol = gtsam::Symbol('b', ak2_factor_nodes_count++);
+
         if(!ak2_init)
         {
             newFactors.add(PriorFactor<Pose2>(symbol, current_pose, priorNoise2));
@@ -207,6 +211,10 @@ void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
         last_ak2_symbol = symbol;
         last_pose2 = current_pose;
     }
+
+    geometry_msgs::PoseWithCovarianceConstPtr real_pose = ros::topic::waitForMessage<geometry_msgs::PoseWithCovariance>("/piksi/enu_pose_fix");
+    gtsam::Pose2 current_real_pose = gtsam::Pose2(real_pose->pose.position.x, real_pose->pose.position.y, 0);
+    realValues.insert(symbol, ak2_cur_pose);
 }
 
 /**
@@ -214,13 +222,13 @@ void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
  */
 bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request, colocalization::addBearingRangeNodes::Response &response)
 {
+    // Adding odom1
     ROS_INFO("addBearingRangeNodes called");
     nav_msgs::OdometryConstPtr odom1 = ros::topic::waitForMessage<nav_msgs::Odometry>("/odom1");
     geometry_msgs::Pose pose1 = odom1->pose.pose;
     float yaw1 = get_yaw(pose1.orientation);
     gtsam::Pose2 current_pose1 =  gtsam::Pose2(pose1.position.x, pose1.position.y, yaw1);
     gtsam::Pose2 ak1_change = get_pose_change_robot_frame(current_pose1, last_pose1);
-
     gtsam::Symbol symbol_ak1 = gtsam::Symbol('a', ak1_factor_nodes_count++);
     newFactors.add(BetweenFactor<Pose2>(last_ak1_symbol, symbol_ak1, ak1_change, odometryNoise));
     ak1_cur_pose = ak1_cur_pose.compose(ak1_change);
