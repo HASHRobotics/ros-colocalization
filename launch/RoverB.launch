@@ -1,0 +1,15 @@
+<launch>
+    <!-- ADD PG launch file over here -->
+    <!-- BEARING SERVICE -->
+    <node pkg="bearing_estimator" type="bearing_estimator_node.py" name="estimated_bearing">
+    </node>
+
+    <!-- GROUND TRUTH BEARING -->
+    <node pkg="bearing_estimator" type="rtk_bearing_node.py" name="real_bearing">
+    </node>
+
+    <!-- RTK GPS -->
+    <node pkg="swiftnav_piksi" type="piksi_node" name="piksi_node" output="screen">
+        <param name="port" value="/dev/ttyUSB1" />
+    </node>
+</launch>

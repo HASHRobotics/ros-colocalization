@@ -1,0 +1,25 @@
+<launch>
+    <node pkg="range_estimator" type="rtkgps.py" name="rtkgps">
+    </node>
+
+    <node pkg="orchestrator" type="manual_coordinator.py" name="manual_coordinator">
+    </node>
+
+    <node pkg="colocalization" type="colocalization" name="colocalization">
+    </node>
+
+    <group ns="Real_time_Plotting">
+      <!-- Begin Plot_data -->
+      <node pkg="plot_data_real_time" type="all_plots.py" name="plot_data">
+      </node>
+      <!-- End Plot_data -->
+
+      <!-- Begin Transformation Frames Mapping -->
+      <node pkg="plot_data_real_time" type="transform_frames.py" name="transform_frames">
+        <param name="rover1_start_angle" type="double" value="0.0" />
+        <param name="rover2_start_angle" type="double" value="0.0" />
+      </node>
+      <!-- End Transform frames -->
+   </group>
+
+</launch>
