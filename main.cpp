@@ -80,9 +80,6 @@ ros::Publisher pose2_pub;
 NonlinearFactorGraph newFactors = NonlinearFactorGraph();
 gtsam::Values newValues = Values();
 gtsam::Values realValues = Values();
-// Publisher for Rover Poses
-ros::Publisher pose_pub1;
-ros::Publisher pose_pub2;
 
 bool ak1_init = 0;
 bool ak2_init = 0;
@@ -196,7 +193,6 @@ void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
     gtsam::Symbol symbol = gtsam::Symbol('b', ak2_factor_nodes_count++);
     float dist = distance(current_pose, last_pose2);
     if(dist >= 0){
-
         if(!ak2_init)
         {
             newFactors.add(PriorFactor<Pose2>(symbol, current_pose, priorNoise2));
@@ -252,14 +248,14 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
     last_pose2 = current_pose2;
 
     bearing_estimator::estimate_bearing bearing12_srv;
-    if (bearingClient12.call(bearing12_srv))
+    if (ros::service::exists("ak1/estimate_bearing", true) && bearingClient12.call(bearing12_srv))
     {
         newFactors.add(BearingFactor<Pose2, Pose2>(symbol_ak1, symbol_ak2, Rot2(bearing12_srv.response.bearing.bearing), bearingNoise));
     }
 
     // Add bearing measurement from rover 2 to rover 1
     bearing_estimator::estimate_bearing bearing21_srv;
-    if (bearingClient21.call(bearing21_srv))
+    if (ros::service::exists("ak2/estimate_bearing", true) && bearingClient21.call(bearing21_srv))
     {
         newFactors.add(BearingFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, Rot2(bearing21_srv.response.bearing.bearing), bearingNoise));
     }
@@ -269,7 +265,6 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
     if (rangeClient.call(estimate_range_srv))
     {
         newFactors.add(RangeFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, estimate_range_srv.response.range.range, rangeNoise));
-        newFactors.add(RangeFactor<Pose2, Pose2>(symbol_ak1, symbol_ak2, estimate_range_srv.response.range.range, rangeNoise));
     }
 
     bearing_estimator::ground_truth_range true_range_srv;
