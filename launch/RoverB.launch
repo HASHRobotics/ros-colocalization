@@ -1,5 +1,5 @@
 <launch>
-    <group ns="ak1">
+    <group ns="ak2">
         <!-- JOYSTICK -->
         <arg name="joy_config" default="dualshock4" />
         <arg name="joy_dev" default="/dev/input/js0" />

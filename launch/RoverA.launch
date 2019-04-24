@@ -1,5 +1,5 @@
 <launch>
-    <group ns="ak2">
+    <group ns="ak1">
         <!-- PG -->
         <include file="$(find pointgrey_camera_driver)/launch/camera.launch"/>
 
