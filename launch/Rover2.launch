@@ -1,0 +1,13 @@
+<launch>
+
+    <!-- JOYSTICK -->
+    <include file="$(find autokrawler)/launch/ak2_control_limit.launch"/>
+<!--     <group ns="ak2">
+        <include file="$(find piksi_multi_rtk_ros)/launch/piksi_multi_rover.launch"/>
+    </group> -->
+
+    <!-- RANGE SENSOR -->
+    <group ns="ak2">
+        <include file="$(find decawave)/launch/launch_decawave.launch"/>
+    </group>
+</launch>
