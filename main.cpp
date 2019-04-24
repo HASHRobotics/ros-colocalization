@@ -22,6 +22,9 @@
 #include <ros/ros.h>
 #include <visualization_msgs/Marker.h>
 
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_ros/transform_listener.h>
+
 /** local include */
 #include "std_msgs/String.h"
 #include "std_msgs/Float32.h"
@@ -111,6 +114,7 @@ Symbol last_ak2_symbol;
 gtsam::Pose2 last_pose1 = gtsam::Pose2(0,0,0);
 gtsam::Pose2 last_pose2 = gtsam::Pose2(0,0,0);
 
+
 // TODO: Class for Odometry
 
 /**
@@ -157,8 +161,23 @@ void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
 {
     cout << "odometry1 called" << endl;
     geometry_msgs::Pose pose = msg->pose.pose;
+
     float yaw = get_yaw(pose.orientation);
     gtsam::Pose2 current_pose = gtsam::Pose2(pose.position.x, pose.position.y, yaw);
+
+    // tf2_ros::Buffer tfBuffer;
+    // geometry_msgs::TransformStamped base_link_to_leap_motion; // My frames are named "base_link" and "leap_motion"
+    // base_link_to_base_station = tfBuffer.lookupTransform("base_station", "base_link", ros::Time(0), ros::Duration(1.0) );
+    // tf2::doTransform(robotPose, robotPose, base_link_to_leap_motion); // robotPose is the PoseStamped I want to transform
+
+    // // tf::Point tf_pose = tf::Point(pose.position.x, pose.position.y, 0);
+    // // tf_pose.
+    // // tf::Stamped<tf::Point> stamped_in_pose = tf::Stamped<tf::Point>(tf_pose, ros::Time::now(), "/ak1/base_link");
+    // // tf::Stamped<tf::Point> stamped_out_pose;
+    // // Transformer::transformPoint("rtk_gps_base_frame", stamped_in_pose, stamped_out_pose);
+
+    // // geometry_msgs::Quaternion orientation = geometry_msgs::Quaternion(stamped_out_pose.w(), stamped_out_pose.x(),stamped_out_pose.y(),stamped_out_pose.z());
+    // gtsam::Pose2 current_pose = gtsam::Pose2(stamped_out_pose.getX(), stamped_out_pose.getY(), yaw);
     gtsam::Pose2 ak1_change = get_pose_change_robot_frame(current_pose, last_pose1);
     gtsam::Symbol symbol = gtsam::Symbol('a', ak1_factor_nodes_count++);
     float dist = distance(current_pose, last_pose1);
@@ -223,53 +242,87 @@ void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
 /**
  *
  */
+// bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request, colocalization::addBearingRangeNodes::Response &response)
+// {
+//     // Adding odom1
+//     ROS_INFO("addBearingRangeNodes called");
+//     nav_msgs::OdometryConstPtr odom1 = ros::topic::waitForMessage<nav_msgs::Odometry>("/ak1/odometry/filtered");
+//     geometry_msgs::Pose pose1 = odom1->pose.pose;
+//     float yaw1 = get_yaw(pose1.orientation);
+//     gtsam::Pose2 current_pose1 =  gtsam::Pose2(pose1.position.x, pose1.position.y, yaw1);
+//     gtsam::Pose2 ak1_change = get_pose_change_robot_frame(current_pose1, last_pose1);
+//     gtsam::Symbol symbol_ak1 = gtsam::Symbol('a', ak1_factor_nodes_count++);
+//     newFactors.add(BetweenFactor<Pose2>(last_ak1_symbol, symbol_ak1, ak1_change, odometryNoise));
+//     ak1_cur_pose = ak1_cur_pose.compose(ak1_change);
+//     newValues.insert(symbol_ak1, ak1_cur_pose);
+//     last_ak1_symbol = symbol_ak1;
+//     last_pose1 = current_pose1;
+
+//     nav_msgs::OdometryConstPtr odom2 = ros::topic::waitForMessage<nav_msgs::Odometry>("/odom2");
+//     geometry_msgs::Pose pose2 = odom2->pose.pose;
+//     float yaw2 = get_yaw(pose2.orientation);
+//     gtsam::Pose2 current_pose2 =  gtsam::Pose2(pose2.position.x, pose2.position.y, yaw2);
+//     gtsam::Pose2 ak2_change = get_pose_change_robot_frame(current_pose2, last_pose2);
+
+//     gtsam::Symbol symbol_ak2 = gtsam::Symbol('b', ak2_factor_nodes_count++);
+//     newFactors.add(BetweenFactor<Pose2>(last_ak2_symbol, symbol_ak2, ak2_change, odometryNoise));
+//     ak2_cur_pose = ak2_cur_pose.compose(ak2_change);
+//     newValues.insert(symbol_ak2, ak2_cur_pose);
+//     last_ak2_symbol = symbol_ak2;
+//     last_pose2 = current_pose2;
+
+//     bearing_estimator::estimate_bearing bearing12_srv;
+//     if (ros::service::exists("ak1/estimate_bearing", true) && bearingClient12.call(bearing12_srv))
+//     {
+//         newFactors.add(BearingFactor<Pose2, Pose2>(symbol_ak1, symbol_ak2, Rot2(bearing12_srv.response.bearing.bearing), bearingNoise));
+//     }
+
+//     // Add bearing measurement from rover 2 to rover 1
+//     bearing_estimator::estimate_bearing bearing21_srv;
+//     if (ros::service::exists("ak2/estimate_bearing", true) && bearingClient21.call(bearing21_srv))
+//     {
+//         newFactors.add(BearingFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, Rot2(bearing21_srv.response.bearing.bearing), bearingNoise));
+//     }
+
+//     // Add range measurement from rover with anchor sensor
+//     bearing_estimator::estimate_range estimate_range_srv;
+//     if (rangeClient.call(estimate_range_srv))
+//     {
+//         newFactors.add(RangeFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, estimate_range_srv.response.range.range, rangeNoise));
+//     }
+
+//     bearing_estimator::ground_truth_range true_range_srv;
+//     trueRangeClient.call(true_range_srv);
+
+//     bearing_estimator::ground_truth_bearing true_bearing_srv;
+//     trueBearingClient.call(true_bearing_srv);
+
+//     newFactors.print(" Factor Graph");
+//     return true;
+// }
+
+
 bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request, colocalization::addBearingRangeNodes::Response &response)
 {
-    // Adding odom1
-    ROS_INFO("addBearingRangeNodes called");
-    nav_msgs::OdometryConstPtr odom1 = ros::topic::waitForMessage<nav_msgs::Odometry>("/odom1");
-    geometry_msgs::Pose pose1 = odom1->pose.pose;
-    float yaw1 = get_yaw(pose1.orientation);
-    gtsam::Pose2 current_pose1 =  gtsam::Pose2(pose1.position.x, pose1.position.y, yaw1);
-    gtsam::Pose2 ak1_change = get_pose_change_robot_frame(current_pose1, last_pose1);
-    gtsam::Symbol symbol_ak1 = gtsam::Symbol('a', ak1_factor_nodes_count++);
-    newFactors.add(BetweenFactor<Pose2>(last_ak1_symbol, symbol_ak1, ak1_change, odometryNoise));
-    ak1_cur_pose = ak1_cur_pose.compose(ak1_change);
-    newValues.insert(symbol_ak1, ak1_cur_pose);
-    last_ak1_symbol = symbol_ak1;
-    last_pose1 = current_pose1;
-
-    nav_msgs::OdometryConstPtr odom2 = ros::topic::waitForMessage<nav_msgs::Odometry>("/odom2");
-    geometry_msgs::Pose pose2 = odom2->pose.pose;
-    float yaw2 = get_yaw(pose2.orientation);
-    gtsam::Pose2 current_pose2 =  gtsam::Pose2(pose2.position.x, pose2.position.y, yaw2);
-    gtsam::Pose2 ak2_change = get_pose_change_robot_frame(current_pose2, last_pose2);
-
-    gtsam::Symbol symbol_ak2 = gtsam::Symbol('b', ak2_factor_nodes_count++);
-    newFactors.add(BetweenFactor<Pose2>(last_ak2_symbol, symbol_ak2, ak2_change, odometryNoise));
-    ak2_cur_pose = ak2_cur_pose.compose(ak2_change);
-    newValues.insert(symbol_ak2, ak2_cur_pose);
-    last_ak2_symbol = symbol_ak2;
-    last_pose2 = current_pose2;
 
     bearing_estimator::estimate_bearing bearing12_srv;
     if (ros::service::exists("ak1/estimate_bearing", true) && bearingClient12.call(bearing12_srv))
     {
-        newFactors.add(BearingFactor<Pose2, Pose2>(symbol_ak1, symbol_ak2, Rot2(bearing12_srv.response.bearing.bearing), bearingNoise));
+        // newFactors.add(BearingFactor<Pose2, Pose2>(symbol_ak1, symbol_ak2, Rot2(bearing12_srv.response.bearing.bearing), bearingNoise));
     }
 
     // Add bearing measurement from rover 2 to rover 1
     bearing_estimator::estimate_bearing bearing21_srv;
     if (ros::service::exists("ak2/estimate_bearing", true) && bearingClient21.call(bearing21_srv))
     {
-        newFactors.add(BearingFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, Rot2(bearing21_srv.response.bearing.bearing), bearingNoise));
+        // newFactors.add(BearingFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, Rot2(bearing21_srv.response.bearing.bearing), bearingNoise));
     }
 
     // Add range measurement from rover with anchor sensor
     bearing_estimator::estimate_range estimate_range_srv;
     if (rangeClient.call(estimate_range_srv))
     {
-        newFactors.add(RangeFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, estimate_range_srv.response.range.range, rangeNoise));
+        // newFactors.add(RangeFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, estimate_range_srv.response.range.range, rangeNoise));
     }
 
     bearing_estimator::ground_truth_range true_range_srv;
@@ -278,7 +331,7 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
     bearing_estimator::ground_truth_bearing true_bearing_srv;
     trueBearingClient.call(true_bearing_srv);
 
-    newFactors.print(" Factor Graph");
+    // newFactors.print(" Factor Graph");
     return true;
 }
 
