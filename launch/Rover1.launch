@@ -16,8 +16,7 @@
     </group>
 
     <!-- RANGE SENSOR -->
-    <node pkg="range_estimator" type="decawave.py" name="decawave">
-    </node>
+    <include file="$(find decawave)/launch/launch_decawave.launch"/>
 
     <!-- RANGE SERVICE -->
     <node pkg="bearing_estimator" type="range_estimator_service.py" name="range">
