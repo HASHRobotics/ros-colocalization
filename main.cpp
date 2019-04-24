@@ -24,6 +24,7 @@
 
 /** local include */
 #include "std_msgs/String.h"
+#include "std_msgs/Float32.h"
 #include "geometry_msgs/Pose2D.h"
 #include "std_msgs/Float64.h"
 #include "sensor_msgs/Range.h"
@@ -76,6 +77,8 @@ ros::ServiceClient trueRangeClient;
 
 ros::Publisher pose1_pub;
 ros::Publisher pose2_pub;
+ros::Publisher odom_error_pub;
+ros::Publisher colocalization_error_pub;
 
 NonlinearFactorGraph newFactors = NonlinearFactorGraph();
 gtsam::Values newValues = Values();
@@ -152,6 +155,7 @@ gtsam::Pose2 get_pose_change_robot_frame(gtsam::Pose2 pose, gtsam::Pose2 last_po
  */
 void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
 {
+    cout << "odometry1 called" << endl;
     geometry_msgs::Pose pose = msg->pose.pose;
     float yaw = get_yaw(pose.orientation);
     gtsam::Pose2 current_pose = gtsam::Pose2(pose.position.x, pose.position.y, yaw);
@@ -175,7 +179,7 @@ void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
         last_ak1_symbol = symbol;
         last_pose1 = current_pose;
     }
-
+    cout << "Odometry1 calculated"  << endl;
     geometry_msgs::PoseWithCovarianceConstPtr real_pose = ros::topic::waitForMessage<geometry_msgs::PoseWithCovariance>("/piksi/enu_pose_fix");
     gtsam::Pose2 current_real_pose = gtsam::Pose2(real_pose->pose.position.x, real_pose->pose.position.y, 0);
     realValues.insert(symbol, current_real_pose);
@@ -186,6 +190,7 @@ void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
  */
 void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
 {
+    cout << "odometry2 called" << endl;
     geometry_msgs::Pose pose = msg->pose.pose;
     float yaw = get_yaw(pose.orientation);
     gtsam::Pose2 current_pose = gtsam::Pose2(pose.position.x, pose.position.y, yaw);
@@ -296,12 +301,51 @@ float calculate_error_metric(gtsam::Values estimated_path, gtsam::Values real_pa
     return error;
 }
 
+float calculateRealDistanceTravelled(gtsam::Values real_path, int rover_n)
+{
+    int nodes_n = rover_n == 1 ? ak1_factor_nodes_count : ak2_factor_nodes_count;
+    char rover_letter = rover_n == 1 ? 'a' : 'b';
+    float distance = 0;
+    for(int i=1; i<nodes_n;i++)
+    {
+        gtsam::Symbol current_symbol = gtsam::Symbol(rover_letter, i);
+        gtsam::Symbol previous_symbol = gtsam::Symbol(rover_letter, i-1);
+        if(real_path.exists(current_symbol) && real_path.exists(previous_symbol))
+        {
+            gtsam::Pose2* current_pose = (gtsam::Pose2*) &real_path.at(current_symbol);
+            gtsam::Pose2* previous_pose = (gtsam::Pose2*) &real_path.at(previous_symbol);
+            distance += std::sqrt(pow(current_pose->x() - previous_pose->x(), 2) + pow(current_pose->y()-previous_pose->y(), 2));
+        }
+    }
+    return distance;
+}
+
+float calculateDrift(gtsam::Values real_path, gtsam::Values estimated_path, int rover_n)
+{
+    bool last_node_found = 0;
+    float drift;
+    int nodes_n = rover_n == 1 ? ak1_factor_nodes_count : ak2_factor_nodes_count;
+    char rover_letter = rover_n == 1 ? 'a' : 'b';
+    while(!last_node_found)
+    {
+        gtsam::Symbol symbol = gtsam::Symbol(rover_letter, nodes_n);
+        if(real_path.exists(symbol) && estimated_path.exists(symbol))
+        {
+            last_node_found = 1;
+            gtsam::Pose2* real_pose = (gtsam::Pose2*) &real_path.at(symbol);
+            gtsam::Pose2* estimated_pose = (gtsam::Pose2*) &estimated_path.at(symbol);
+            drift = std::sqrt(pow(real_pose->x() - estimated_pose->x(), 2) + pow(real_pose->y()-estimated_pose->y(), 2));
+        }
+        nodes_n -= 1;
+    }
+    return drift;
+}
 /**
  *
  */
 bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, colocalization::optimizeFactorGraph::Response &response)
 {
-    ROS_INFO("addBearingRangeNodes called");
+    cout << "addBearingRangeNodes called" << endl;
     newValues.print("Odometry Result:\n");
     // Publish updated path data as well.
     gtsam::LevenbergMarquardtParams LMParams;
@@ -314,7 +358,7 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
     // To Do: Marginals marginals(newFactors, result);
     int count = 0;
     response.size = size;
-    float odom_error1, colocalize_error1;
+    float odom_drift1, colocalize_drift1, distance_travelled1;
     for(int i=0; i<ak1_factor_nodes_count;i++)
     {
         if(i<realValues.size() && i<newValues.size() && i<result.size())
@@ -334,13 +378,14 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
             pose.orientation = orientation;
 
             response.poses1.poses.push_back(pose);
-            odom_error1 = calculate_error_metric(newValues, realValues, 1);
-            colocalize_error1 = calculate_error_metric(result, realValues, 1);
+            distance_travelled1 = calculateRealDistanceTravelled(realValues, 1);
+            odom_drift1 = calculateDrift(realValues, newValues, 1);
+            colocalize_drift1 = calculateDrift(realValues, result, 1);
         }
     }
     geometry_msgs::PoseArray poses1 = response.poses1;
     pose1_pub.publish(poses1);
-    float odom_error2, colocalize_error2;
+    float odom_drift2, colocalize_drift2, distance_travelled2;
     for(int i=0; i<ak2_factor_nodes_count;i++)
     {
         if(i<realValues.size() && i<newValues.size() && i<result.size())
@@ -360,12 +405,18 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
             pose.orientation = orientation;
 
             response.poses2.poses.push_back(pose);
-            odom_error2 = calculate_error_metric(newValues, realValues, 2);
-            colocalize_error2 = calculate_error_metric(result, realValues, 2);
+            distance_travelled2 = calculateRealDistanceTravelled(realValues, 2);
+            odom_drift2 = calculateDrift(realValues, newValues, 2);
+            colocalize_drift2 = calculateDrift(realValues, result, 2);
         }
     }
-    float odom_error = odom_error1 + odom_error2;
-    float colocalize_error = colocalize_error1 + colocalize_error2;
+    std_msgs::Float32 odom_error;
+    odom_error.data = (odom_drift2/distance_travelled2 + odom_drift1/distance_travelled1)/2;
+    std_msgs::Float32 colocalization_error;
+    colocalization_error.data = (colocalize_drift2/distance_travelled2 + colocalize_drift1/distance_travelled1)/2;
+
+    odom_error_pub.publish(odom_error);
+    colocalization_error_pub.publish(colocalization_error);
 
     geometry_msgs::PoseArray poses2 = response.poses2;
     pose2_pub.publish(poses2);
@@ -380,21 +431,27 @@ int main(int argc, char* argv[])
 {
     ros::init(argc, argv, "colocalization");
     ros::NodeHandle n;
-
+    cout << "Started" << endl;
     // TODO: We can use one odometry callback by having a Class for "Odometry"
     ros::Subscriber odometry1_sub = n.subscribe("/odom1", 1000, odometry1Callback);
     ros::Subscriber odometry2_sub = n.subscribe("/odom2", 1000, odometry2Callback);
+
     pose1_pub = n.advertise<geometry_msgs::PoseArray>("/pose1", 1000);
     pose2_pub = n.advertise<geometry_msgs::PoseArray>("/pose2", 1000);
+    odom_error_pub = n.advertise<std_msgs::Float32>("/odom_error", 1000);
+    colocalization_error_pub = n.advertise<std_msgs::Float32>("/colocalize_error", 1000);
+
     ros::ServiceServer addBearingRangeNodesService = n.advertiseService("addBearingRangeNodes", addBearingRangeNodes);
     ros::ServiceServer optimizeFactorGraphService = n.advertiseService("optimizeFactorGraph", optimizeFactorGraph);
+
     bearingClient12 = n.serviceClient<bearing_estimator::estimate_bearing>("ak1/estimate_bearing");
     bearingClient21 = n.serviceClient<bearing_estimator::estimate_bearing>("ak2/estimate_bearing");
     rangeClient = n.serviceClient<bearing_estimator::estimate_range>("estimate_range");
     trueRangeClient = n.serviceClient<bearing_estimator::ground_truth_range>("ground_truth_range");
     trueBearingClient = n.serviceClient<bearing_estimator::ground_truth_bearing>("ground_truth_bearing");
-    ros::Publisher pose_pub = n.advertise<geometry_msgs::Pose2D>("estimated_pose", 10);
+
     ros::Rate loop_rate(10);
+
     while(ros::ok())
     {
         ros::spin();
