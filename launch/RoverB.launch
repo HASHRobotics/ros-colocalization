@@ -1,25 +1,42 @@
 <launch>
-    <group ns="ak2">
-        <!-- PG -->
-        <include file="$(find pointgrey_camera_driver)/launch/camera.launch"/>
+    <group ns="ak1">
+        <!-- JOYSTICK -->
+        <arg name="joy_config" default="dualshock4" />
+        <arg name="joy_dev" default="/dev/input/js0" />
+        <arg name="config_filepath" default="$(find autokrawler)/joystick_config/$(arg joy_config).config.yaml" />
 
-        <!-- BEARING SERVICE -->
-        <node pkg="bearing_estimator" type="bearing_estimator_node.py" name="estimated_bearing">
+        <node pkg="joy" type="joy_node" name="joy_node">
+            <param name="dev" value="$(arg joy_dev)" />
+            <param name="deadzone" value="0.3" />
+            <param name="autorepeat_rate" value="20" />
         </node>
+
+        <node pkg="teleop_twist_joy" name="teleop_twist_joy" type="teleop_node">
+            <rosparam command="load" file="$(arg config_filepath)" />
+        </node>
+
+        <!-- IMU -->
+        <node pkg="um7" name="um7_driver" type="um7_driver">
+            <param name="port" value="/dev/imu" />
+            <param name="mag_updates" value="false" />
+            <param name="frame_id" value="ak1_imu_link" />
+            <param name="zero_gyros" value="true" />
+        </node>
+
+        <!-- EKF -->
+        <node pkg="robot_localization" type="ekf_localization_node" name="ekf_se" clear_params="true">
+            <rosparam command="load" file="$(find autokrawler)/params/ekf_template_ak1.yaml" />
+        </node>
+
+        <!-- MOTORS -->
+        <node pkg="autokrawler" name="roboclaw_driver" type="roboclaw_driver.py">
+            <param name="front_port" value="/dev/front" />
+            <param name="rear_port" value="/dev/rear" />
+        </node>
+        <node pkg="autokrawler" name="drive_controller" type="drive_controller.py" />
+        <node pkg="autokrawler" name="wheel_odometry" type="wheel_odometry.py" />
 
         <!-- RTK GPS -->
         <include file="$(find piksi_multi_rtk_ros)/launch/piksi_multi_rover.launch"/>
-
-        <!-- GROUND TRUTH BEARING -->
-        <node pkg="bearing_estimator" type="rtk_bearing_node.py" name="real_bearing">
-        </node>
     </group>
-
-    <!-- RANGE SENSOR -->
-    <node pkg="range_estimator" type="decawave.py" name="decawave">
-    </node>
-
-    <!-- RANGE SERVICE -->
-    <node pkg="bearing_estimator" type="range_estimator_service.py" name="range">
-    </node>
 </launch>
