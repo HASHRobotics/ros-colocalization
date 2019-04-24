@@ -433,19 +433,20 @@ int main(int argc, char* argv[])
     ros::NodeHandle n;
     cout << "Started" << endl;
     // TODO: We can use one odometry callback by having a Class for "Odometry"
-    ros::Subscriber odometry1_sub = n.subscribe("/odom1", 1000, odometry1Callback);
-    ros::Subscriber odometry2_sub = n.subscribe("/odom2", 1000, odometry2Callback);
+    ros::Subscriber odometry1_sub = n.subscribe("/ak1/odometry/filtered", 1000, odometry1Callback);
+    ros::Subscriber odometry2_sub = n.subscribe("/ak2/odometry/filtered", 1000, odometry2Callback);
 
-    pose1_pub = n.advertise<geometry_msgs::PoseArray>("/pose1", 1000);
-    pose2_pub = n.advertise<geometry_msgs::PoseArray>("/pose2", 1000);
+    pose1_pub = n.advertise<geometry_msgs::PoseArray>("/ak1/pose1", 1000);
+    pose2_pub = n.advertise<geometry_msgs::PoseArray>("/ak2/pose2", 1000);
+
     odom_error_pub = n.advertise<std_msgs::Float32>("/odom_error", 1000);
     colocalization_error_pub = n.advertise<std_msgs::Float32>("/colocalize_error", 1000);
 
     ros::ServiceServer addBearingRangeNodesService = n.advertiseService("addBearingRangeNodes", addBearingRangeNodes);
     ros::ServiceServer optimizeFactorGraphService = n.advertiseService("optimizeFactorGraph", optimizeFactorGraph);
 
-    bearingClient12 = n.serviceClient<bearing_estimator::estimate_bearing>("ak1/estimate_bearing");
-    bearingClient21 = n.serviceClient<bearing_estimator::estimate_bearing>("ak2/estimate_bearing");
+    bearingClient12 = n.serviceClient<bearing_estimator::estimate_bearing>("/ak1/estimate_bearing");
+    bearingClient21 = n.serviceClient<bearing_estimator::estimate_bearing>("/ak2/estimate_bearing");
     rangeClient = n.serviceClient<bearing_estimator::estimate_range>("estimate_range");
     trueRangeClient = n.serviceClient<bearing_estimator::ground_truth_range>("ground_truth_range");
     trueBearingClient = n.serviceClient<bearing_estimator::ground_truth_bearing>("ground_truth_bearing");
