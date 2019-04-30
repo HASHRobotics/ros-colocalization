@@ -203,19 +203,16 @@ void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
  */
 void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
 {
-    // cout << "Odometry2 called" << endl;
-    cout << ak2_factor_nodes_count << endl;
+    cout << "Odometry2 called" << endl;
     geometry_msgs::Pose pose = msg->pose.pose;
     float yaw = get_yaw(pose.orientation);
     gtsam::Pose2 current_pose = gtsam::Pose2(pose.position.x, pose.position.y, yaw);
     gtsam::Pose2 ak2_change = get_pose_change_robot_frame(current_pose, last_pose2);
-    gtsam::Symbol symbol = gtsam::Symbol('b', ak2_factor_nodes_count++);
     float dist = distance(current_pose, last_pose2);
     if(dist >= 0.2){
-        cout << "Distance from previous odom measurement: " << dist << endl;
+        gtsam::Symbol symbol = gtsam::Symbol('b', ak2_factor_nodes_count++);
         if(!ak2_init)
         {
-
             newFactors.add(PriorFactor<Pose2>(symbol, current_pose, priorNoise2));
             newValues.insert(symbol, current_pose);
             ak2_cur_pose = current_pose;
@@ -223,16 +220,18 @@ void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
         }
         else
         {
+            cout << "Added "
+            symbol.print();
             newFactors.add(BetweenFactor<Pose2>(last_ak2_symbol, symbol, ak2_change, odometryNoise));
             ak2_cur_pose= ak2_cur_pose.compose(ak2_change);
             newValues.insert(symbol, ak2_cur_pose);
         }
         last_ak2_symbol = symbol;
         last_pose2 = current_pose;
+        piksi_rtk_msgs::BaselineNedConstPtr real_pose = ros::topic::waitForMessage<piksi_rtk_msgs::BaselineNed>("/ak2/piksi/baseline_ned");
+        gtsam::Pose2 current_real_pose = gtsam::Pose2(real_pose->e/1000.0, real_pose->n/1000.0, 0);
+        realValues.insert(symbol, current_real_pose);
     }
-    piksi_rtk_msgs::BaselineNedConstPtr real_pose = ros::topic::waitForMessage<piksi_rtk_msgs::BaselineNed>("/ak2/piksi/baseline_ned");
-    gtsam::Pose2 current_real_pose = gtsam::Pose2(real_pose->e/1000.0, real_pose->n/1000.0, 0);
-    realValues.insert(symbol, current_real_pose);
 
 }
 
@@ -480,7 +479,6 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
     colocalization_error.data = (colocalize_drift2/distance_travelled2);
     colocalization_error_pub.publish(colocalization_error);
     cout << colocalization_error.data << endl;
-
     return true;
 }
 
