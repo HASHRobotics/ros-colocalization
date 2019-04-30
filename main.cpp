@@ -172,10 +172,10 @@ void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
     float yaw = get_yaw(pose.orientation);
     gtsam::Pose2 current_pose = gtsam::Pose2(pose.position.x, pose.position.y, yaw);
     gtsam::Pose2 ak1_change = get_pose_change_robot_frame(current_pose, last_pose1);
-    gtsam::Symbol symbol = gtsam::Symbol('a', ak1_factor_nodes_count++);
     float dist = distance(current_pose, last_pose1);
     cout << "Distance from previous odom measurement: " << dist << endl;
     if (dist>=0.2) {
+        gtsam::Symbol symbol = gtsam::Symbol('a', ak1_factor_nodes_count++);
         if(!ak1_init)
         {
             newFactors.add(PriorFactor<Pose2>(symbol, current_pose, priorNoise1));
@@ -185,6 +185,8 @@ void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
         }
         else
         {
+            cout << "Added ";
+            symbol.print();
             newFactors.add(BetweenFactor<Pose2>(last_ak1_symbol, symbol, ak1_change, odometryNoise));
             ak1_cur_pose = ak1_cur_pose.compose(ak1_change);
             newValues.insert(symbol, ak1_cur_pose);
@@ -192,7 +194,6 @@ void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
         last_ak1_symbol = symbol;
         last_pose1 = current_pose;
     }
-    cout << "Odometry1 calculated"  << endl;
     // piksi_rtk_msgs::BaselineNedConstPtr real_pose = ros::topic::waitForMessage<piksi_rtk_msgs::BaselineNed>("/ak2/piksi/baseline_ned");
     // gtsam::Pose2 current_real_pose = gtsam::Pose2(real_pose->pose.position.x, real_pose->pose.position.y, 0);
     // realValues.insert(symbol, current_real_pose);
@@ -381,7 +382,11 @@ float calculateDrift(gtsam::Values real_path, gtsam::Values estimated_path, int 
             last_node_found = 1;
             gtsam::Pose2* real_pose = (gtsam::Pose2*) &real_path.at(symbol);
             gtsam::Pose2* estimated_pose = (gtsam::Pose2*) &estimated_path.at(symbol);
-            drift = std::sqrt(pow(real_pose->x() - estimated_pose->x(), 2) + pow(real_pose->y()-estimated_pose->y(), 2));
+
+            Eigen::Vector3d p(estimated_pose->x(), estimated_pose->y(), 1);
+            Eigen::Vector3d transformed_pose = H_rover22rtk*p;
+
+            drift = std::sqrt(pow(real_pose->x() - transformed_pose[0], 2) + pow(real_pose->y()-transformed_pose[1], 2));
         }
         nodes_n -= 1;
     }
@@ -475,10 +480,12 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
     odom_error.data = (odom_drift2/distance_travelled2);
     odom_error_pub.publish(odom_error);
     cout << odom_error.data << endl;
+
     std_msgs::Float32 colocalization_error;
     colocalization_error.data = (colocalize_drift2/distance_travelled2);
     colocalization_error_pub.publish(colocalization_error);
     cout << colocalization_error.data << endl;
+
     return true;
 }
 
