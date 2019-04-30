@@ -1,0 +1,28 @@
+Charge all required batteries.
+4 - 22.2 V
+2 - 12 V
+Joystick 1
+Joystick 2
+
+Put panels
+Put panel on the robot camera
+
+Keep a HDMI Cable connected in the rover.
+Take a monitor.
+Take a table.
+Move the decawave near the RTK GPS.
+- Displace RTK module from the Robot 1
+Set this as a base station
+Add and test joystick command to take range and bearing
+Change code to take bearing from a stationary rover.
+
+
+
+
+
+SVD Day:
+1. Tune parameters of camera for image collection.
+2. Collect a dataset with Panels.
+2a. Harsh takes images and starts working on the video.
+3. Collect a dataset without Panels.
+4. Prepare for SVD 2

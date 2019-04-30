@@ -299,7 +299,7 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
         bearing_estimator::estimate_bearing bearing12_srv;
         if (ros::service::exists("/ak1/estimate_bearing", true) && bearingClient12.call(bearing12_srv))
         {
-            if(bearing12_srv.response.bearing.detected)
+            if(bearing12_srv.response.detected)
             {
                 newFactors.add(BearingFactor<Pose2, Pose2>(symbol_ak1, symbol_ak2, Rot2(bearing12_srv.response.bearing.bearing), bearingNoise));
                 ROS_INFO("Added bearing12");
@@ -310,7 +310,7 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
         bearing_estimator::estimate_bearing bearing21_srv;
         if (ros::service::exists("/ak2/estimate_bearing", true) && bearingClient21.call(bearing21_srv))
         {
-            if(bearing21_srv.response.bearing.detected)
+            if(bearing21_srv.response.detected)
             {
                 newFactors.add(BearingFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, Rot2(bearing21_srv.response.bearing.bearing), bearingNoise));
                 ROS_INFO("Added bearing21");
@@ -321,7 +321,7 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
         bearing_estimator::estimate_range estimate_range_srv;
         if (ros::service::exists("/estimate_range", true) && rangeClient.call(estimate_range_srv))
         {
-            if(estimate_range_srv.response.range.detected)
+            if(estimate_range_srv.response.detected)
             {
                 newFactors.add(RangeFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, estimate_range_srv.response.range.range, rangeNoise));
                 ROS_INFO("Added range");
