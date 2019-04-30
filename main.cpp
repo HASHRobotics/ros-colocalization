@@ -294,34 +294,42 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
         ROS_INFO("Odometry 2 added successfully");
     }
 
-
     if(odom1_added && odom2_added)
     {
         bearing_estimator::estimate_bearing bearing12_srv;
-        if (ros::service::exists("ak1/estimate_bearing", true) && bearingClient12.call(bearing12_srv))
+        if (ros::service::exists("/ak1/estimate_bearing", true) && bearingClient12.call(bearing12_srv))
         {
-            newFactors.add(BearingFactor<Pose2, Pose2>(symbol_ak1, symbol_ak2, Rot2(bearing12_srv.response.bearing.bearing), bearingNoise));
-            ROS_INFO("Added bearing12");
+            if(bearing12_srv.response.bearing.detected)
+            {
+                newFactors.add(BearingFactor<Pose2, Pose2>(symbol_ak1, symbol_ak2, Rot2(bearing12_srv.response.bearing.bearing), bearingNoise));
+                ROS_INFO("Added bearing12");
+            }
         }
 
         // Add bearing measurement from rover 2 to rover 1
         bearing_estimator::estimate_bearing bearing21_srv;
-        if (ros::service::exists("ak2/estimate_bearing", true) && bearingClient21.call(bearing21_srv))
+        if (ros::service::exists("/ak2/estimate_bearing", true) && bearingClient21.call(bearing21_srv))
         {
-            newFactors.add(BearingFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, Rot2(bearing21_srv.response.bearing.bearing), bearingNoise));
-            ROS_INFO("Added bearing21");
+            if(bearing21_srv.response.bearing.detected)
+            {
+                newFactors.add(BearingFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, Rot2(bearing21_srv.response.bearing.bearing), bearingNoise));
+                ROS_INFO("Added bearing21");
+            }
         }
 
         // Add range measurement from rover with anchor sensor
         bearing_estimator::estimate_range estimate_range_srv;
-        if (rangeClient.call(estimate_range_srv))
+        if (ros::service::exists("/estimate_range", true) && rangeClient.call(estimate_range_srv))
         {
-            newFactors.add(RangeFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, estimate_range_srv.response.range.range, rangeNoise));
-            ROS_INFO("Added range");
+            if(estimate_range_srv.response.range.detected)
+            {
+                newFactors.add(RangeFactor<Pose2, Pose2>(symbol_ak2, symbol_ak1, estimate_range_srv.response.range.range, rangeNoise));
+                ROS_INFO("Added range");
+            }
         }
 
-        bearing_estimator::ground_truth_range true_range_srv;
-        trueRangeClient.call(true_range_srv);
+        // bearing_estimator::ground_truth_range true_range_srv;
+        // trueRangeClient.call(true_range_srv);
 
         // bearing_estimator::ground_truth_bearing true_bearing_srv;
         // trueBearingClient.call(true_bearing_srv);
@@ -464,8 +472,11 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
         }
     }
     distance_travelled2 = calculateRealDistanceTravelled(realValues, 2);
+    cout << "Real distance travelled " << distance_travelled2;
     odom_drift2 = calculateDrift(realValues, newValues, 2);
+    cout << " Odometry Drift " << odom_drift2;
     colocalize_drift2 = calculateDrift(realValues, result, 2);
+    cout << " colocalization drift" << colocalize_drift2 << endl;
 
     geometry_msgs::PoseArray poses2 = response.poses2;
     pose2_pub.publish(poses2);
@@ -530,7 +541,7 @@ int main(int argc, char* argv[])
     // Subscribed estimated services
     bearingClient12 = n.serviceClient<bearing_estimator::estimate_bearing>("/ak1/estimate_bearing");
     bearingClient21 = n.serviceClient<bearing_estimator::estimate_bearing>("/ak2/estimate_bearing");
-    rangeClient = n.serviceClient<bearing_estimator::estimate_range>("estimate_range");
+    rangeClient = n.serviceClient<bearing_estimator::estimate_range>("/estimate_range");
 
     // Subscribed ground truth services
     trueRangeClient = n.serviceClient<bearing_estimator::ground_truth_range>("ground_truth_range");
