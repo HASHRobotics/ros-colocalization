@@ -220,7 +220,7 @@ void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
         }
         else
         {
-            cout << "Added "
+            cout << "Added ";
             symbol.print();
             newFactors.add(BetweenFactor<Pose2>(last_ak2_symbol, symbol, ak2_change, odometryNoise));
             ak2_cur_pose= ak2_cur_pose.compose(ak2_change);
