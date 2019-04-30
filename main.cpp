@@ -2,6 +2,7 @@
 #include <fstream>
 #include <math.h>
 #include <ros/console.h>
+#include <iostream>
 
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/slam/BetweenFactor.h>
@@ -18,6 +19,7 @@
 #include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/slam/RangeFactor.h>
 #include <gtsam/slam/BearingFactor.h>
+#include <gtsam/base/Matrix.h>
 
 /** ros include */
 #include <ros/ros.h>
@@ -116,6 +118,7 @@ Symbol last_ak2_symbol;
 gtsam::Pose2 last_pose1 = gtsam::Pose2(0,0,0);
 gtsam::Pose2 last_pose2 = gtsam::Pose2(0,0,0);
 
+Eigen::Matrix3d H_rover22rtk;
 
 // TODO: Class for Odometry
 
@@ -125,7 +128,7 @@ gtsam::Pose2 last_pose2 = gtsam::Pose2(0,0,0);
 float distance(gtsam::Pose2 current_pose, gtsam::Pose2 last_pose)
 {
     float dist = std::sqrt(pow(current_pose.x() - last_pose.x(), 2) + pow(current_pose.y()-last_pose.y(), 2));
-    cout << "Distance from previous odom measurement: " << dist << endl;
+    // cout << "Distance from previous odom measurement: " << dist << endl;
     return dist;
 }
 
@@ -171,7 +174,8 @@ void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
     gtsam::Pose2 ak1_change = get_pose_change_robot_frame(current_pose, last_pose1);
     gtsam::Symbol symbol = gtsam::Symbol('a', ak1_factor_nodes_count++);
     float dist = distance(current_pose, last_pose1);
-    if (dist>=0) {
+    cout << "Distance from previous odom measurement: " << dist << endl;
+    if (dist>=0.2) {
         if(!ak1_init)
         {
             newFactors.add(PriorFactor<Pose2>(symbol, current_pose, priorNoise1));
@@ -199,16 +203,19 @@ void odometry1Callback(const nav_msgs::Odometry::ConstPtr& msg)
  */
 void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
 {
-    cout << "Odometry2 called" << endl;
+    // cout << "Odometry2 called" << endl;
+    cout << ak2_factor_nodes_count << endl;
     geometry_msgs::Pose pose = msg->pose.pose;
     float yaw = get_yaw(pose.orientation);
     gtsam::Pose2 current_pose = gtsam::Pose2(pose.position.x, pose.position.y, yaw);
     gtsam::Pose2 ak2_change = get_pose_change_robot_frame(current_pose, last_pose2);
     gtsam::Symbol symbol = gtsam::Symbol('b', ak2_factor_nodes_count++);
     float dist = distance(current_pose, last_pose2);
-    if(dist >= 0){
+    if(dist >= 0.2){
+        cout << "Distance from previous odom measurement: " << dist << endl;
         if(!ak2_init)
         {
+
             newFactors.add(PriorFactor<Pose2>(symbol, current_pose, priorNoise2));
             newValues.insert(symbol, current_pose);
             ak2_cur_pose = current_pose;
@@ -224,8 +231,9 @@ void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
         last_pose2 = current_pose;
     }
     piksi_rtk_msgs::BaselineNedConstPtr real_pose = ros::topic::waitForMessage<piksi_rtk_msgs::BaselineNed>("/ak2/piksi/baseline_ned");
-    gtsam::Pose2 current_real_pose = gtsam::Pose2(real_pose->e, real_pose->n, 0);
+    gtsam::Pose2 current_real_pose = gtsam::Pose2(real_pose->e/1000.0, real_pose->n/1000.0, 0);
     realValues.insert(symbol, current_real_pose);
+
 }
 
 /**
@@ -285,6 +293,7 @@ bool addBearingRangeNodes(colocalization::addBearingRangeNodes::Request& request
         odom2_added = true;
         ROS_INFO("Odometry 2 added successfully");
     }
+
 
     if(odom1_added && odom2_added)
     {
@@ -384,7 +393,7 @@ float calculateDrift(gtsam::Values real_path, gtsam::Values estimated_path, int 
  */
 bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, colocalization::optimizeFactorGraph::Response &response)
 {
-    cout << "addBearingRangeNodes called" << endl;
+    cout << "optimizeFactorGraph called" << endl;
     newValues.print("Odometry Result:\n");
 
     gtsam::LevenbergMarquardtParams LMParams;
@@ -433,9 +442,12 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
             gtsam::Symbol symbol_ak2 = gtsam::Symbol('b', i);
             gtsam::Pose2* pose2 = (gtsam::Pose2*) &result.at(symbol_ak2);
 
+            Eigen::Vector3d p(pose2->x(), pose2->y(), 1);
+            Eigen::Vector3d transformed_pose = H_rover22rtk*p;
+
             geometry_msgs::Point position;
-            position.x = pose2->x();
-            position.y = pose2->y();
+            position.x = transformed_pose[0];
+            position.y = transformed_pose[1];
 
             geometry_msgs::Quaternion orientation;
             orientation.z = pose2->theta();
@@ -445,11 +457,11 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
             pose.orientation = orientation;
 
             response.poses2.poses.push_back(pose);
-            distance_travelled2 = calculateRealDistanceTravelled(realValues, 2);
-            odom_drift2 = calculateDrift(realValues, newValues, 2);
-            colocalize_drift2 = calculateDrift(realValues, result, 2);
         }
     }
+    distance_travelled2 = calculateRealDistanceTravelled(realValues, 2);
+    odom_drift2 = calculateDrift(realValues, newValues, 2);
+    colocalize_drift2 = calculateDrift(realValues, result, 2);
 
     geometry_msgs::PoseArray poses2 = response.poses2;
     pose2_pub.publish(poses2);
@@ -463,12 +475,22 @@ bool optimizeFactorGraph(colocalization::optimizeFactorGraph::Request& request, 
     std_msgs::Float32 odom_error;
     odom_error.data = (odom_drift2/distance_travelled2);
     odom_error_pub.publish(odom_error);
-
+    cout << odom_error.data << endl;
     std_msgs::Float32 colocalization_error;
     colocalization_error.data = (colocalize_drift2/distance_travelled2);
     colocalization_error_pub.publish(colocalization_error);
+    cout << colocalization_error.data << endl;
 
     return true;
+}
+
+void set_transformation(piksi_rtk_msgs::BaselineNedConstPtr initial_pose)
+{
+    cout << "Transformation set" << endl;
+    H_rover22rtk << 0, 0, initial_pose->e/1000.0,
+        0, 0, initial_pose->n/1000.0,
+        0, 0, 1;
+    cout << H_rover22rtk << endl;
 }
 
 /**
@@ -479,9 +501,14 @@ int main(int argc, char* argv[])
     ros::init(argc, argv, "colocalization");
     ros::NodeHandle n;
     cout << "Started" << endl;
+
+    // Set Odometry and RTK GPS transformation
+    piksi_rtk_msgs::BaselineNedConstPtr initial_pose = ros::topic::waitForMessage<piksi_rtk_msgs::BaselineNed>("/ak2/piksi/baseline_ned");
+    set_transformation(initial_pose);
+
     // TODO: We can use one odometry callback by having a Class for "Odometry"
-    ros::Subscriber odometry1_sub = n.subscribe("/ak1/odometry/filtered", 1000, odometry1Callback);
-    ros::Subscriber odometry2_sub = n.subscribe("/ak2/odometry/filtered", 1000, odometry2Callback);
+    ros::Subscriber odometry1_sub = n.subscribe("/ak1/odom", 1000, odometry1Callback);
+    ros::Subscriber odometry2_sub = n.subscribe("/ak2/odom", 1000, odometry2Callback);
 
     // Updated Pose Publisher
     pose1_pub = n.advertise<geometry_msgs::PoseArray>("/ak1/pose1", 1000);
