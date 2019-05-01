@@ -229,9 +229,17 @@ void odometry2Callback(const nav_msgs::Odometry::ConstPtr& msg)
         }
         last_ak2_symbol = symbol;
         last_pose2 = current_pose;
+
+
         piksi_rtk_msgs::BaselineNedConstPtr real_pose = ros::topic::waitForMessage<piksi_rtk_msgs::BaselineNed>("/ak2/piksi/baseline_ned");
         gtsam::Pose2 current_real_pose = gtsam::Pose2(real_pose->e/1000.0, real_pose->n/1000.0, 0);
         realValues.insert(symbol, current_real_pose);
+
+        Eigen::Vector3d p(ak2_cur_pose.x(), ak2_cur_pose.y(), 1);
+        Eigen::Vector3d transformed_pose = H_rover22rtk*p;
+
+
+        cout << ("RTK-> x:"+std::to_string(real_pose->e/1000.0)+", y:"+std::to_string(real_pose->n/1000.0)) << " ODOM-> x:"+std::to_string(transformed_pose[0])+", y:"+std::to_string(transformed_pose[1]) << endl;
     }
 
 }
